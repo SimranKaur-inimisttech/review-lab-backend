@@ -1,0 +1,33 @@
+import express from "express";
+import cors from "cors";
+
+export const app = express();
+
+// Middleware
+app.use(cors({
+  origin: 'http://localhost:8888',
+  credentials: true
+}));
+app.use(express.json());
+
+import errorHandler from "./middlewares/errorHandler.js";
+
+// All routes above...
+import teamsRouter from "./routes/teams.routes.js";
+import authRouter from './routes/auth.routes.js';
+
+app.use('/api/teams', teamsRouter);
+app.use('/api', authRouter);
+
+// Catch-all for unhandled routes (optional)
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    statusCode: 404,
+    message: 'Route not found',
+  });
+});
+
+// Global error handler goes last
+app.use(errorHandler);
+
