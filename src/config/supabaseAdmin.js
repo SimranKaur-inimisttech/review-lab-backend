@@ -10,7 +10,7 @@ if (!supabaseUrl || !supabaseServiceRoleKey) {
 }
 
 // Create and export the Supabase client instance with auth configuration
-export const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
