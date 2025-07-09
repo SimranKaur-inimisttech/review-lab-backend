@@ -1,5 +1,7 @@
 import express from "express";
 import cors from "cors";
+import errorHandler from "./middlewares/errorHandler.js";
+import { attachSupabase } from "./middlewares/supabaseClient.js";
 
 export const app = express();
 
@@ -10,7 +12,7 @@ app.use(cors({
 }));
 app.use(express.json());
 
-import errorHandler from "./middlewares/errorHandler.js";
+app.use(attachSupabase);
 
 // All routes above...
 import teamsRouter from "./routes/teams.routes.js";
@@ -26,7 +28,8 @@ app.use((req, res) => {
     statusCode: 404,
     message: 'Route not found',
   });
-});
+})
+
 
 // Global error handler goes last
 app.use(errorHandler);

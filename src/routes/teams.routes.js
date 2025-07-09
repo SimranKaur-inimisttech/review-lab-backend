@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { getTeams } from "../controllers/teams.controllers.js";
+import { getTeamswithMembers } from "../controllers/teams.controllers.js";
 
 const router = Router();
 
-router.route('/').get(getTeams)
+router.route('/').get(getTeamswithMembers)
 
 export default router;

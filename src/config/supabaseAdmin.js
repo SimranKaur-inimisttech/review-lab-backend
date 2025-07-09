@@ -13,7 +13,6 @@ if (!supabaseUrl || !supabaseServiceRoleKey) {
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
   auth: {
     autoRefreshToken: true,
-    persistSession: true,
     detectSessionInUrl: true,
     flowType: 'pkce'
   }

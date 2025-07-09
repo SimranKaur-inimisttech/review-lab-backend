@@ -1,4 +1,3 @@
-import { supabase } from "../config/supabaseClient.js";
 import { supabaseAdmin } from "../config/supabaseAdmin.js";
 import { sendVerificationEmail } from "../lib/mailer/nodeMailer.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -89,13 +88,13 @@ export const login = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Email is not verified');
   }
 
-  const { data : user, error: userError } = await supabase.auth.signInWithPassword({
+  const { data : user, error: userError } = await req.supabase.auth.signInWithPassword({
     email,
     password
   })
-
+ 
   if (userError) {
-    throw new ApiError(401, error.message || 'Invalid email or password');
+    throw new ApiError(401, userError.message || 'Invalid email or password');
   }
 
   res.status(200).json(new ApiResponse(200, user, 'Login successful'));
