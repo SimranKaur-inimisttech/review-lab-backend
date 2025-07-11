@@ -1,6 +1,7 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
+import { supabaseAdmin } from "../config/supabaseAdmin.js";
 
 export const getTeamswithMembers = asyncHandler(async (req, res) => {
 
@@ -51,4 +52,45 @@ export const getTeamswithMembers = asyncHandler(async (req, res) => {
   );
 
   res.status(200).json(new ApiResponse(200, teamsWithMembers, 'Teams fetched successfully'));
+});
+
+export const createTeam = asyncHandler(async (req, res) => {
+
+  const { error } = await req.supabase
+    .from('teams')
+    .insert(req.body)
+
+  if (error) {
+    throw new ApiError(error.status, error.message);
+  }
+
+  const { data: team, error: teamError } = await supabaseAdmin
+    .from('teams')
+    .select()
+    .eq('name', req.body.name)
+    .single();
+
+  console.log("data--->", team, error)
+
+  const { error: memberError } = await req.supabase
+    .from('team_members')
+    .insert({
+      tea_id: team.id,
+      user_id: req.body.owner_id,
+      role: 'owner',
+    });
+
+  if (memberError) {
+
+    // Rollback: delete the team
+    
+    const res = await req.supabase
+  .from('teams')
+  .delete()
+  .eq('id', team.id);
+    console.log('response====>', res)
+    throw new ApiError(memberError.status, 'Error adding owner to team');
+  }
+
+  res.status(200).json(new ApiResponse(200, team, 'Teams created successfully'));
 });

@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { getTeamswithMembers } from "../controllers/teams.controllers.js";
+import { createTeam, getTeamswithMembers } from "../controllers/teams.controllers.js";
 
 const router = Router();
 
 router.route('/').get(getTeamswithMembers)
+router.route('/').post(createTeam)
 
 export default router;
