@@ -17,8 +17,11 @@ app.use(attachSupabase);
 // All routes above...
 import teamsRouter from "./routes/teams.routes.js";
 import authRouter from './routes/auth.routes.js';
+import teamMemberRouter from './routes/teamMembers.routes.js';
 
 app.use('/api/teams', teamsRouter);
+app.use('/api/team-members', teamMemberRouter);
+
 app.use('/api', authRouter);
 
 // Catch-all for unhandled routes (optional)

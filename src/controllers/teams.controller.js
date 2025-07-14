@@ -70,27 +70,20 @@ export const createTeam = asyncHandler(async (req, res) => {
     .eq('name', req.body.name)
     .single();
 
-  console.log("data--->", team, error)
-
+  // Add owner as team member
   const { error: memberError } = await req.supabase
     .from('team_members')
     .insert({
-      tea_id: team.id,
+      team_id: team.id,
       user_id: req.body.owner_id,
       role: 'owner',
     });
 
   if (memberError) {
-
     // Rollback: delete the team
-    
-    const res = await req.supabase
-  .from('teams')
-  .delete()
-  .eq('id', team.id);
-    console.log('response====>', res)
+    const res = await supabaseAdmin.from('teams').delete().eq('id', team.id);
     throw new ApiError(memberError.status, 'Error adding owner to team');
   }
 
-  res.status(200).json(new ApiResponse(200, team, 'Teams created successfully'));
+  res.status(201).json(new ApiResponse(201, team, 'Teams created successfully'));
 });
