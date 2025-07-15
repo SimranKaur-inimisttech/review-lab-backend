@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
-import errorHandler from "./middlewares/errorHandler.js";
-import { attachSupabase } from "./middlewares/supabaseClient.js";
+import errorHandler from "@/middlewares/errorHandler";
+import { attachSupabase } from "@/middlewares/supabaseClient";
 
 export const app = express();
 
@@ -15,9 +15,9 @@ app.use(express.json());
 app.use(attachSupabase);
 
 // All routes above...
-import teamsRouter from "./routes/teams.routes.js";
-import authRouter from './routes/auth.routes.js';
-import teamMemberRouter from './routes/teamMembers.routes.js';
+import teamsRouter from "@/routes/teams.routes";
+import authRouter from '@/routes/auth.routes';
+import teamMemberRouter from '@/routes/teamMembers.routes';
 
 app.use('/api/teams', teamsRouter);
 app.use('/api/team-members', teamMemberRouter);

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { inviteTeamMember } from "../controllers/teamMembers.controller.js";
+import { inviteTeamMember } from "@/controllers/teamMembers.controller";
 
 const router = Router();
 

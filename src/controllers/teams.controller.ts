@@ -1,8 +1,8 @@
-import { asyncHandler } from "../utils/asyncHandler.js";
-import ApiResponse from "../utils/ApiResponse.js";
-import { ApiError } from "../utils/ApiError.js";
-import { supabaseAdmin } from "../config/supabaseAdmin.js";
-import { validateRequiredFields } from "../utils/helpers.js";
+import { asyncHandler } from "@/utils/asyncHandler";
+import ApiResponse from "@/utils/ApiResponse";
+import { ApiError } from "@/utils/ApiError";
+import { supabaseAdmin } from "@/config/supabaseAdmin";
+import { validateRequiredFields } from "@/utils/helpers";
 
 export const getTeamswithMembers = asyncHandler(async (req, res) => {
 

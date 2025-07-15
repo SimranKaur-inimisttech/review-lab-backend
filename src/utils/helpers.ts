@@ -1,4 +1,4 @@
-import { ApiError } from "./ApiError.js";
+import { ApiError } from "./ApiError";
 import crypto from 'crypto';
 
 export function generateOtp(length = 6) {
@@ -11,7 +11,7 @@ export function getOtpExpiry(minutes = 10) {
   return new Date(Date.now() + minutes * 60 * 1000); // now + X minutes
 }
 
-// Validates that all required fields are present (not null, undefined, or empty string)
+// Validates that all required fields
 export function validateRequiredFields(obj, fields) {
   const missing = fields.filter(
     (field) => obj[field] === undefined || obj[field] === null || obj[field] === ''

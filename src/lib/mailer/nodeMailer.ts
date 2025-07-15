@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
-import { mailTemplate } from "../mailTemplate/index.js";
-import { ApiError } from "../../utils/ApiError.js";
+import { mailTemplate } from "../mailTemplate";
+import { ApiError } from "@/utils/ApiError";
 
 // Create a nodemailer transporter
 const transporter = nodemailer.createTransport({

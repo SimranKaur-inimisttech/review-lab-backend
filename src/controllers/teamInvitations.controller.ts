@@ -1,7 +1,7 @@
-import { ApiError } from "../utils/ApiError.js";
-import ApiResponse from "../utils/ApiResponse.js";
-import { asyncHandler } from "../utils/asyncHandler.js";
-import { generateExpiryDate, generateToken, validateRequiredFields } from "../utils/helpers.js";
+import { ApiError } from "@/utils/ApiError";
+import ApiResponse from "@/utils/ApiResponse";
+import { asyncHandler } from "@/utils/asyncHandler";
+import { generateExpiryDate, generateToken, validateRequiredFields } from "@/utils/helpers";
 
 export const createTeamInvitation = asyncHandler(async (req, res) => {
     validateRequiredFields(req.body, ['team_id', 'email', 'role', 'invited_by']);
