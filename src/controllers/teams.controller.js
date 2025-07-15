@@ -2,6 +2,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { supabaseAdmin } from "../config/supabaseAdmin.js";
+import { validateRequiredFields } from "../utils/helpers.js";
 
 export const getTeamswithMembers = asyncHandler(async (req, res) => {
 
@@ -55,6 +56,7 @@ export const getTeamswithMembers = asyncHandler(async (req, res) => {
 });
 
 export const createTeam = asyncHandler(async (req, res) => {
+  validateRequiredFields(req.body, ['name']);
 
   const { error } = await req.supabase
     .from('teams')
@@ -71,6 +73,7 @@ export const createTeam = asyncHandler(async (req, res) => {
     .single();
 
   // Add owner as team member
+  validateRequiredFields(req.body, ['team_id','user_id']);
   const { error: memberError } = await req.supabase
     .from('team_members')
     .insert({
