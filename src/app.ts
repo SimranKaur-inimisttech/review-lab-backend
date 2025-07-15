@@ -24,7 +24,7 @@ app.use('/api/team-members', teamMemberRouter);
 
 app.use('/api', authRouter);
 
-// Catch-all for unhandled routes (optional)
+// Catch-all for unhandled routes
 app.use((req, res) => {
   res.status(404).json({
     success: false,

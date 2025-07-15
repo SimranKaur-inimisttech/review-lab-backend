@@ -14,5 +14,5 @@ export const inviteTeamMember = asyncHandler(async (req, res) => {
     throw new ApiError(error.status, error.message);
   }
 
-  res.status(201).json(new ApiResponse(201, null, 'Team member invited successfully'));
+  res.status(201).json(new ApiResponse(201, undefined, 'Team member invited successfully'));
 });

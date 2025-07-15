@@ -23,5 +23,5 @@ export const createTeamInvitation = asyncHandler(async (req, res) => {
         throw new ApiError(error.status, error.message);
     }
 
-    res.status(201).json(new ApiResponse(201, null, `Invitation sent to ${email}`));
+    res.status(201).json(new ApiResponse(201, undefined, `Invitation sent to ${email}`));
 });

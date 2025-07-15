@@ -14,6 +14,6 @@
       "@/*": [ "src/*" ]
     }
   },
-  "include": [ "server.ts", "src" ],
+  "include": [ "server.ts","types", "src" ],
   "exclude": [ "node_modules", "dist" ]
 }

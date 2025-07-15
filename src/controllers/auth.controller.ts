@@ -4,12 +4,13 @@ import { ApiError } from "@/utils/ApiError";
 import ApiResponse from "@/utils/ApiResponse";
 import { asyncHandler } from "@/utils/asyncHandler";
 import { generateOtp, getOtpExpiry, validateRequiredFields } from "@/utils/helpers";
+import { Request, Response } from "express";
 
-export const register = asyncHandler(async (req, res) => {
+export const register = asyncHandler(async (req: Request, res: Response) => {
   const { email, password, metadata } = req.body;
   validateRequiredFields(req.body, ['email', 'password']);
 
-  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+  const { data: { user }, error } = await supabaseAdmin.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
@@ -19,8 +20,8 @@ export const register = asyncHandler(async (req, res) => {
     }
   });
 
-  if (error) {
-    throw new ApiError(error.status, error.message);
+  if (error || !user) {
+    throw new ApiError(error?.status, error?.message);
   }
 
   const newUserVerifyCode = generateOtp();
@@ -32,18 +33,18 @@ export const register = asyncHandler(async (req, res) => {
       email_verification_otp: newUserVerifyCode,
       otp_expires_at: otpExpiresAt,
     })
-    .eq('id', data.user.id);
+    .eq('id', user?.id);
 
   if (insertError) {
-    throw new ApiError(insertError.status, insertError.message);
+    throw new ApiError(500, insertError.message);
   }
 
-  await sendVerificationEmail(data.user, newUserVerifyCode)
+  await sendVerificationEmail(user, newUserVerifyCode)
 
-  res.status(201).json(new ApiResponse(201, data.user, 'Signup Successfully. Please check your email to confirm.'));
+  res.status(201).json(new ApiResponse(201, user, 'Signup Successfully. Please check your email to confirm.')); 
 });
 
-export const verifyEmail = asyncHandler(async (req, res) => {
+export const verifyEmail = asyncHandler(async (req: Request, res: Response) => {
   const { email, otp } = req.body;
   validateRequiredFields(req.body, ['otp']);
 
@@ -71,11 +72,10 @@ export const verifyEmail = asyncHandler(async (req, res) => {
     throw new ApiError(500, 'Could not verify email');
   }
 
-
-  res.status(200).json(new ApiResponse(200, null, 'Email verified successfully'));
+  res.status(200).json(new ApiResponse(200, undefined, 'Email verified successfully'));
 });
 
-export const login = asyncHandler(async (req, res) => {
+export const login = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = req.body;
   validateRequiredFields(req.body, ['email', 'password']);
 
@@ -87,15 +87,15 @@ export const login = asyncHandler(async (req, res) => {
   if (!data || error) {
     throw new ApiError(400, 'User not found');
   }
-  if(!data.is_email_verified){
+  if (!data.is_email_verified) {
     throw new ApiError(400, 'Email is not verified');
   }
 
-  const { data : user, error: userError } = await req.supabase.auth.signInWithPassword({
+  const { data: user, error: userError } = await req.supabase.auth.signInWithPassword({
     email,
     password
   })
- 
+
   if (userError) {
     throw new ApiError(401, userError.message || 'Invalid email or password');
   }
