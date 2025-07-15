@@ -1,4 +1,5 @@
 import { ApiError } from "./ApiError.js";
+import crypto from 'crypto';
 
 export function generateOtp(length = 6) {
   const min = Math.pow(10, length - 1); // e.g., 100000
@@ -19,4 +20,16 @@ export function validateRequiredFields(obj, fields) {
   if (missing.length > 0) {
     throw new ApiError(400, `Missing required field(s): ${missing.join(', ')}`);
   }
+}
+
+// Generates a secure random token (64 characters, 256-bit).
+export function generateToken() {
+  return crypto.randomBytes(32).toString('hex'); // 64-char token
+}
+
+// Returns a future date string in ISO format based on days ahead.
+export function generateExpiryDate(days = 7) {
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + days);
+  return expiresAt.toISOString();
 }

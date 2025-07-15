@@ -3,10 +3,11 @@ import { sendVerificationEmail } from "../lib/mailer/nodeMailer.js";
 import { ApiError } from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { generateOtp, getOtpExpiry } from "../utils/helpers.js";
+import { generateOtp, getOtpExpiry, validateRequiredFields } from "../utils/helpers.js";
 
 export const register = asyncHandler(async (req, res) => {
   const { email, password, metadata } = req.body;
+  validateRequiredFields(req.body, ['email', 'password']);
 
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email,
@@ -44,6 +45,7 @@ export const register = asyncHandler(async (req, res) => {
 
 export const verifyEmail = asyncHandler(async (req, res) => {
   const { email, otp } = req.body;
+  validateRequiredFields(req.body, ['otp']);
 
   const { data, error } = await supabaseAdmin
     .from('users')
@@ -75,6 +77,7 @@ export const verifyEmail = asyncHandler(async (req, res) => {
 
 export const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
+  validateRequiredFields(req.body, ['email', 'password']);
 
   const { data, error } = await supabaseAdmin
     .from('users')
