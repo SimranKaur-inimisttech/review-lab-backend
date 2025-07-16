@@ -18,9 +18,11 @@ app.use(attachSupabase);
 import teamsRouter from "@/routes/teams.routes";
 import authRouter from '@/routes/auth.routes';
 import teamMemberRouter from '@/routes/teamMembers.routes';
+import teamInvitationRouter from '@/routes/teamInvitations.routes';
 
 app.use('/api/teams', teamsRouter);
 app.use('/api/team-members', teamMemberRouter);
+app.use('/api/team-invitations', teamInvitationRouter);
 
 app.use('/api', authRouter);
 

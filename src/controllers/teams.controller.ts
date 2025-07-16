@@ -74,7 +74,6 @@ export const createTeam = asyncHandler(async (req:Request, res:Response) => {
     .single();
 
   // Add owner as team member
-  validateRequiredFields(req.body, ['team_id','user_id']);
   const { error: memberError } = await req.supabase
     .from('team_members')
     .insert({
@@ -83,7 +82,7 @@ export const createTeam = asyncHandler(async (req:Request, res:Response) => {
       role: 'owner',
     });
 
-  if (memberError) {
+  if (teamError || memberError ) {
     // Rollback: delete the team
     await supabaseAdmin.from('teams').delete().eq('id', team.id);
     throw new ApiError(500, 'Error adding owner to team');
