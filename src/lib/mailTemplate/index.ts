@@ -1,5 +1,5 @@
 const templates = {
-  forgotPassword: (otp) => `
+  forgotPassword: (otp: string) => `
       <html>
         <body>
           <h1>Password Reset</h1>
@@ -7,7 +7,7 @@ const templates = {
         </body>
       </html>
     `,
-  verifyEmail: (otp) => `
+  verifyEmail: (otp: string) => `
       <html>
         <body>
           <h1>Verify Email</h1>
@@ -15,7 +15,7 @@ const templates = {
         </body>
       </html>
     `,
-  changePassword: (token) => `
+  changePassword: (token: string) => `
     <html>
       <body>
         <h1>Change Password Reset Request</h1>
@@ -25,7 +25,7 @@ const templates = {
       </body>
     </html>
   `,
-  changePasswordAlert: (forgotUrl, extrargs = "") => `
+  changePasswordAlert: (forgotUrl: string, extrargs = "") => `
     <html>
       <body>
         <h1>You have change your Password</h1>
@@ -38,7 +38,9 @@ const templates = {
   // Add more templates as needed
 };
 
-export const mailTemplate = (template, args = "") => {
+type EmailTemplateType = "forgotpassword" | "verifyemail" | "changepassword" | "changepasswordalert";
+
+export const mailTemplate = (template: EmailTemplateType, args = "") => {
   const forgotUrl = `${process.env.APP_DOMAIN}/forgotpassword`;
   switch (template) {
     case "forgotpassword":

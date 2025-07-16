@@ -21,7 +21,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   });
 
   if (error || !user) {
-    throw new ApiError(error?.status, error?.message);
+    throw new ApiError(500, error?.message);
   }
 
   const newUserVerifyCode = generateOtp();

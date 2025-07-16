@@ -12,7 +12,7 @@ export function getOtpExpiry(minutes = 10) {
 }
 
 // Validates that all required fields
-export function validateRequiredFields(obj, fields) {
+export function validateRequiredFields(obj: Record<string, any>, fields: string[]) {
   const missing = fields.filter(
     (field) => obj[field] === undefined || obj[field] === null || obj[field] === ''
   );
