@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/config/supabaseAdmin";
 import { sendVerificationEmail } from "@/lib/mailer/nodeMailer";
+import { createUserWithEmailAndPassword } from "@/lib/userService";
 import { ApiError } from "@/utils/ApiError";
 import ApiResponse from "@/utils/ApiResponse";
 import { asyncHandler } from "@/utils/asyncHandler";
@@ -7,22 +8,9 @@ import { generateOtp, getOtpExpiry, validateRequiredFields } from "@/utils/helpe
 import { Request, Response } from "express";
 
 export const register = asyncHandler(async (req: Request, res: Response) => {
-  const { email, password, metadata } = req.body;
   validateRequiredFields(req.body, ['email', 'password']);
 
-  const { data: { user }, error } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: {
-      ...metadata || {},
-      is_email_verified: false
-    }
-  });
-
-  if (error || !user) {
-    throw new ApiError(500, error?.message);
-  }
+  const user = await createUserWithEmailAndPassword({ ...req.body, is_email_verified: false });
 
   const newUserVerifyCode = generateOtp();
   const otpExpiresAt = getOtpExpiry(10);
@@ -41,7 +29,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
 
   await sendVerificationEmail(user, newUserVerifyCode)
 
-  res.status(201).json(new ApiResponse(201, user, 'Signup Successfully. Please check your email to confirm.')); 
+  res.status(201).json(new ApiResponse(201, user, 'Signup Successfully. Please check your email to confirm.'));
 });
 
 export const verifyEmail = asyncHandler(async (req: Request, res: Response) => {
