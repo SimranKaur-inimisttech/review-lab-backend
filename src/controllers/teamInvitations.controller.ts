@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/config/supabaseAdmin";
 import { getValidInvitationByToken } from "@/lib/invitations";
-import { checkIfUserIsTeamMember } from "@/lib/teamMembers";
+import { addTeamMember, checkIfUserIsTeamMember } from "@/lib/teamMembers";
 import { createUserWithEmailAndPassword, getUserByEmail } from "@/lib/userService";
 import { ApiError } from "@/utils/ApiError";
 import ApiResponse from "@/utils/ApiResponse";
@@ -11,21 +11,16 @@ import { Request, Response } from "express";
 export const createTeamInvitation = asyncHandler(async (req: Request, res: Response) => {
     const { team_id, email } = req.body
     //  Lookup user by email
-    const { data: user, error: userError } = await req.supabase
-        .from('users')
-        .select('id')
-        .eq('email', email)
-        .single();
+    const user = await getUserByEmail(email);
 
-    if (userError) {
-        throw new ApiError(500, userError.message);
+    if (user) {
+        // Check if the user is already a team member
+        await checkIfUserIsTeamMember({
+            supabase: req.supabase,
+            team_id,
+            user_id: user.id,
+        });
     }
-    // Check if the user is already a team member
-    await checkIfUserIsTeamMember({
-        supabase: req.supabase,
-        teamId: team_id,
-        userId: user.id,
-    });
 
     // Check if invite already exists
     const { data: existingInvite } = await req.supabase
@@ -83,6 +78,15 @@ export const getTeamInvitationByToken = asyncHandler(async (req: Request, res: R
     // Check if a user with this email already exists
     const user = await getUserByEmail(invitation.email);
 
+    if (user) {
+        // Check if the user is already a team member
+        await checkIfUserIsTeamMember({
+            supabase: supabaseAdmin,
+            team_id: invitation.team_id,
+            user_id: user.id,
+        });
+    }
+
     const invitationData = {
         id: invitation.id,
         email: invitation.email,
@@ -109,35 +113,38 @@ export const acceptTeamInvitation = asyncHandler(async (req: Request, res: Respo
             throw new ApiError(400, 'Email does not match the invitation');
         }
 
-        user = await createUserWithEmailAndPassword(req.body);
+        user = await createUserWithEmailAndPassword({ ...req.body, role: invitation.role });
     }
 
     // Check if the user is already a team member
     await checkIfUserIsTeamMember({
-        supabase: req.supabase,
-        teamId: invitation.team_id,
-        userId: user.id,
+        supabase: supabaseAdmin,
+        team_id: invitation.team_id,
+        user_id: user.id,
     });
 
-    // Step 3: Add user to team_members 
-    const { error: insertError } = await req.supabase
-        .from('team_members')
-        .insert({
-            team_id: invitation.team_id,
-            user_id: user.id,
-            role: invitation.role,
-            invited_by: invitation.invited_by,
-        });
-
-    if (insertError) {
-        throw new ApiError(500, insertError.message);
-    }
-
+    // Add user to team_members 
+    await addTeamMember({
+        supabase: supabaseAdmin,
+        team_id: invitation.team_id,
+        user_id: user.id,
+        role: invitation.role,
+        invited_by: invitation.invited_by,
+        invited_at: invitation.invited_at
+    })
     // Mark invite as accepted
-    await req.supabase
+    const { error: updateError } = await supabaseAdmin
         .from('team_invitations')
-        .update({ status: 'accepted' })
-        .eq('id', invitation.id);
+        .update({
+            status: 'accepted',
+            accepted_at: new Date().toISOString()
+        })
+        .eq('id', invitation.id)
+        .eq('token',token);
+
+    if (updateError) {
+        throw new ApiError(400, updateError.message);
+    }
 
     res.status(200).json(new ApiResponse(200, null, 'Invitation accepted successfully'));
 });

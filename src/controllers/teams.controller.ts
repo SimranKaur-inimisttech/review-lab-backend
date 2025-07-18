@@ -4,8 +4,9 @@ import { ApiError } from "@/utils/ApiError";
 import { supabaseAdmin } from "@/config/supabaseAdmin";
 import { validateRequiredFields } from "@/utils/helpers";
 import { Request, Response } from "express";
+import { addTeamMember } from "@/lib/teamMembers";
 
-export const getTeamswithMembers = asyncHandler(async (req:Request, res:Response) => {
+export const getTeamswithMembers = asyncHandler(async (req: Request, res: Response) => {
 
   const { data: teams, error: teamError } = await req.supabase.from('teams')
     .select('*')
@@ -56,7 +57,7 @@ export const getTeamswithMembers = asyncHandler(async (req:Request, res:Response
   res.status(200).json(new ApiResponse(200, teamsWithMembers, 'Teams fetched successfully'));
 });
 
-export const createTeam = asyncHandler(async (req:Request, res:Response) => {
+export const createTeam = asyncHandler(async (req: Request, res: Response) => {
   validateRequiredFields(req.body, ['name']);
 
   const { error } = await req.supabase
@@ -74,15 +75,14 @@ export const createTeam = asyncHandler(async (req:Request, res:Response) => {
     .single();
 
   // Add owner as team member
-  const { error: memberError } = await req.supabase
-    .from('team_members')
-    .insert({
-      team_id: team.id,
-      user_id: req.body.owner_id,
-      role: 'owner',
-    });
+  const { success, } = await addTeamMember({
+    supabase: req.supabase,
+    team_id: team.id,
+    user_id: req.body.owner_id,
+    role: 'owner',
+  }, false);
 
-  if (teamError || memberError ) {
+  if (teamError || !success) {
     // Rollback: delete the team
     await supabaseAdmin.from('teams').delete().eq('id', team.id);
     throw new ApiError(500, 'Error adding owner to team');

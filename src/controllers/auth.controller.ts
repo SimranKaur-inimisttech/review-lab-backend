@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/config/supabaseAdmin";
 import { sendVerificationEmail } from "@/lib/mailer/nodeMailer";
-import { createUserWithEmailAndPassword } from "@/lib/userService";
+import { createUserWithEmailAndPassword, getUserByEmail } from "@/lib/userService";
 import { ApiError } from "@/utils/ApiError";
 import ApiResponse from "@/utils/ApiResponse";
 import { asyncHandler } from "@/utils/asyncHandler";
@@ -67,14 +67,12 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = req.body;
   validateRequiredFields(req.body, ['email', 'password']);
 
-  const { data, error } = await supabaseAdmin
-    .from('users')
-    .select('id , email , is_email_verified')
-    .eq('email', email)
-    .maybeSingle();
-  if (!data || error) {
+  const data = await getUserByEmail(email);
+
+  if (!data) {
     throw new ApiError(400, 'User not found');
   }
+  
   if (!data.is_email_verified) {
     throw new ApiError(400, 'Email is not verified');
   }

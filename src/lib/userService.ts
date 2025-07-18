@@ -1,12 +1,11 @@
 import { supabaseAdmin } from "@/config/supabaseAdmin";
 import { ApiError } from "@/utils/ApiError";
-import { User } from '@supabase/supabase-js';
-import { CreateUserInput } from "./types/user";
+import { User } from "./types/user";
 
 export const getUserByEmail = async (email: string) => {
     const { data, error } = await supabaseAdmin
         .from('users')
-        .select('id')
+        .select('*')
         .eq('email', email)
         .maybeSingle();
 
@@ -14,7 +13,7 @@ export const getUserByEmail = async (email: string) => {
         throw new ApiError(400, `Error checking user existence: ${error.message}`);
     }
 
-    return data; // returns true if user exists, false otherwise
+    return data;
 };
 
 export const createUserWithEmailAndPassword = async ({
@@ -22,8 +21,9 @@ export const createUserWithEmailAndPassword = async ({
     password,
     firstName,
     lastName,
+    role,
     is_email_verified = true,
-}: CreateUserInput) => {
+}: User) => {
     const { data: { user }, error } = await supabaseAdmin.auth.admin.createUser({
         email,
         password,
@@ -33,6 +33,7 @@ export const createUserWithEmailAndPassword = async ({
             lastName,
             full_name: `${firstName} ${lastName}`.trim(),
             is_email_verified,
+            role
         },
     });
 
