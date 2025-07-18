@@ -90,3 +90,20 @@ export const createTeam = asyncHandler(async (req: Request, res: Response) => {
 
   res.status(201).json(new ApiResponse(201, team, 'Teams created successfully'));
 });
+
+export const updateTeam = asyncHandler(async (req: Request, res: Response) => {
+  validateRequiredFields(req.body, ['name']);
+
+  const { data, error } = await req.supabase
+    .from('teams')
+    .update(req.body)
+    .eq('id', req.body.team_id)
+    .select()
+    .single();
+
+  if (error) {
+    throw new ApiError(500, error.message);
+  }
+
+  res.status(201).json(new ApiResponse(201, data, 'Teams updated successfully'));
+});

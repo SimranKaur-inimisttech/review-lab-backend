@@ -16,6 +16,17 @@ export const getUserByEmail = async (email: string) => {
     return data;
 };
 
+export const updateUserById = async (updateData: Record<string, any>) => {
+    const { error: insertError } = await supabaseAdmin
+        .from("users")
+        .update(updateData)
+        .eq('id', updateData.user_id);
+
+    if (insertError) {
+        throw new ApiError(500, insertError.message);
+    }
+}
+
 export const createUserWithEmailAndPassword = async ({
     email,
     password,
@@ -36,6 +47,8 @@ export const createUserWithEmailAndPassword = async ({
             role
         },
     });
+
+    await updateUserById({ is_email_verified, user_id: user?.id })
 
     if (error || !user) {
         throw new ApiError(500, error?.message || 'User creation failed');
