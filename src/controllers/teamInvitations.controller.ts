@@ -23,7 +23,7 @@ export const createTeamInvitation = asyncHandler(async (req: Request, res: Respo
     }
 
     // Check if invite already exists
-    const { data: existingInvite } = await req.supabase
+    const { data: existingInvite, error: invite } = await supabaseAdmin
         .from('team_invitations')
         .select('id')
         .eq('team_id', team_id)
@@ -40,20 +40,23 @@ export const createTeamInvitation = asyncHandler(async (req: Request, res: Respo
     const token = generateToken();
     const expiresAt = generateExpiryDate(7);
 
-    const { error } = await req.supabase
+    const { data: invitation, error } = await supabaseAdmin
         .from('team_invitations')
         .insert({
             ...req.body,
+            invited_at: new Date().toISOString(),
             expires_at: expiresAt,
             token,
             status: 'pending'
         })
+        .select()
+        .single();
 
     if (error) {
         throw new ApiError(500, error.message);
     }
 
-    res.status(201).json(new ApiResponse(201, undefined, `Invitation sent to ${email}`));
+    res.status(201).json(new ApiResponse(201, invitation, `Invitation sent to ${email}`));
 });
 
 
@@ -140,7 +143,7 @@ export const acceptTeamInvitation = asyncHandler(async (req: Request, res: Respo
             accepted_at: new Date().toISOString()
         })
         .eq('id', invitation.id)
-        .eq('token',token);
+        .eq('token', token);
 
     if (updateError) {
         throw new ApiError(400, updateError.message);

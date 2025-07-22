@@ -1,12 +1,12 @@
 import { ApiError } from '@/utils/ApiError';
 import { TeamMember } from './types/teamMember';
+import { supabaseAdmin } from '@/config/supabaseAdmin';
 
 export const checkIfUserIsTeamMember = async ({
-  supabase,
   team_id,
   user_id,
 }: TeamMember) => {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('team_members')
     .select('id')
     .eq('team_id', team_id)
@@ -24,7 +24,6 @@ export const checkIfUserIsTeamMember = async ({
 
 export const addTeamMember = async (
   {
-    supabase,
     team_id,
     user_id,
     role,
@@ -33,7 +32,7 @@ export const addTeamMember = async (
   }: TeamMember,
   throwOnError: boolean = true
 ): Promise<{ success: boolean; error?: string }> => {
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from('team_members')
     .insert({
       team_id,
@@ -51,4 +50,29 @@ export const addTeamMember = async (
   }
 
   return { success: true };
+};
+
+
+export const getTeamMembersbyId = async ( team_id : string, throwOnError: boolean = true): Promise<{ success?: boolean; error?: string, data?: any }> => {
+  const { data, error } = await supabaseAdmin
+    .from('team_members')
+    .select(`
+        *,
+        users!team_members_user_id_fkey (
+          id,
+          email,
+          full_name,
+        )
+      `)
+    .eq('team_id', team_id)
+    .eq('is_active', true);
+
+  if (error) {
+    if (throwOnError) {
+      throw new ApiError(500, error.message);
+    }
+    return { success: false, error: error.message };
+  }
+  return { data };
+
 };

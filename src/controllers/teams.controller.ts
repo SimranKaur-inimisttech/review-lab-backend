@@ -4,12 +4,14 @@ import { ApiError } from "@/utils/ApiError";
 import { supabaseAdmin } from "@/config/supabaseAdmin";
 import { validateRequiredFields } from "@/utils/helpers";
 import { Request, Response } from "express";
-import { addTeamMember } from "@/lib/teamMembers";
+import { addTeamMember, getTeamMembersbyId } from "@/lib/teamMembers";
+import { TeamMember } from "@/lib/types/teamMember";
 
 export const getTeamswithMembers = asyncHandler(async (req: Request, res: Response) => {
 
   const { data: teams, error: teamError } = await req.supabase.from('teams')
     .select('*')
+    .eq('is_active', true)
     .order('created_at', { ascending: false });
 
   if (teamError) {
@@ -18,23 +20,11 @@ export const getTeamswithMembers = asyncHandler(async (req: Request, res: Respon
 
   const teamsWithMembers = await Promise.all(
     (teams || []).map(async (team) => {
-      const { data: membersData, error: membersError } = await req.supabase
-        .from('team_members')
-        .select(`
-        *,
-        users!team_members_user_id_fkey (
-          id,
-          email,
-          full_name,
-          avatar_url
-        )
-      `)
-        .eq('team_id', team.id)
-        .eq('is_active', true);
 
-      if (membersError) {
-        throw new ApiError(500, membersError.message);
-      }
+      const { data: membersData } = await getTeamMembersbyId({ team_id: team.id }) as {
+        data: TeamMember[] | undefined;
+      };
+
       return {
         ...team,
         member_count: membersData?.length || 0,
@@ -97,7 +87,7 @@ export const updateTeam = asyncHandler(async (req: Request, res: Response) => {
   const { data, error } = await req.supabase
     .from('teams')
     .update(req.body)
-    .eq('id', req.body.team_id)
+    .eq('id', req.params.id)
     .select()
     .single();
 
@@ -105,5 +95,21 @@ export const updateTeam = asyncHandler(async (req: Request, res: Response) => {
     throw new ApiError(500, error.message);
   }
 
-  res.status(201).json(new ApiResponse(201, data, 'Teams updated successfully'));
+  res.status(200).json(new ApiResponse(200, data, 'Teams updated successfully'));
+});
+
+export const deleteTeam = asyncHandler(async (req: Request, res: Response) => {
+
+  const { error } = await req.supabase
+    .from('teams')
+    .update({
+      is_active: false,
+    })
+    .eq('id', req.params.id);
+
+  if (error) {
+    throw new ApiError(500, error.message);
+  }
+
+  res.status(200).json(new ApiResponse(200, undefined, 'Teams deleted successfully'));
 });
