@@ -53,7 +53,7 @@ export const addTeamMember = async (
 };
 
 
-export const getTeamMembersbyId = async ( team_id : string, throwOnError: boolean = true): Promise<{ success?: boolean; error?: string, data?: any }> => {
+export const getTeamMembersbyId = async (team_id: string, throwOnError: boolean = true): Promise<{ success?: boolean; error?: string, data?: any }> => {
   const { data, error } = await supabaseAdmin
     .from('team_members')
     .select(`
@@ -61,7 +61,7 @@ export const getTeamMembersbyId = async ( team_id : string, throwOnError: boolea
         users!team_members_user_id_fkey (
           id,
           email,
-          full_name,
+          full_name
         )
       `)
     .eq('team_id', team_id)
@@ -73,6 +73,6 @@ export const getTeamMembersbyId = async ( team_id : string, throwOnError: boolea
     }
     return { success: false, error: error.message };
   }
-  return { data };
+  return { success: true, data };
 
 };

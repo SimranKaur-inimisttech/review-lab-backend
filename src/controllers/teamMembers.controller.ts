@@ -3,6 +3,7 @@ import { AccountTeamMember } from "@/lib/types/teamMember";
 import ApiResponse from "@/utils/ApiResponse";
 import { asyncHandler } from "@/utils/asyncHandler";
 import { validateRequiredFields } from "@/utils/helpers";
+import { User } from "@supabase/supabase-js";
 import { Request, Response } from "express";
 
 export const inviteTeamMember = asyncHandler(async (req: Request, res: Response) => {
@@ -14,31 +15,30 @@ export const inviteTeamMember = asyncHandler(async (req: Request, res: Response)
 });
 
 export const getAccountTeamMembers = asyncHandler(async (req: Request, res: Response) => {
-  const { team_id } =req.params;
+  const { team_id } = req.params;
+  const { id, email, role, user_metadata: { full_name } } = req.user as User
 
-  const { data: membersData, success } = await getTeamMembersbyId(team_id) as {
+  const { data: membersData, success } = await getTeamMembersbyId(team_id,false) as {
     data: any[] | undefined;
     success: boolean
   };
 
   let currentUser = {
-    id: userId,
-    email: "admin@example.com",
-    name: "Current User",
-    role: "admin",
-    status: "active",
+    id,
+    email: email || 'unknown@example.com',
+    name: full_name || 'Unknown User',
+    role: role as 'admin' | 'member',
+    status: 'active' as const,
     joinedAt: new Date().toISOString(),
     lastActive: new Date().toISOString()
   };
 
   // Fall back to current user as admin
   if (!success) {
-    return {
-      data: [currentUser],
-      error: null
-    };
+    res.status(200).json(new ApiResponse(200, [currentUser]));
   }
-  const members: AccountTeamMember[] = membersData?.map(member => {
+
+  let members: AccountTeamMember[] = membersData?.map(member => {
     // Handle the users join data properly
     const userData = Array.isArray(member.users) ? member.users[0] : member.users;
     return {
@@ -53,10 +53,10 @@ export const getAccountTeamMembers = asyncHandler(async (req: Request, res: Resp
   }) || [];
 
   // Always include the current user as admin if not already in the list
-  const currentUserExists = members.some(m => m.id === userId);
+  const currentUserExists = members.some(m => m.id === id);
   if (!currentUserExists) {
     members.unshift(currentUser);
   }
 
-  res.status(201).json(new ApiResponse(201, undefined, 'Team member invited successfully'));
+  res.status(200).json(new ApiResponse(200, members, 'Team members fetched successfully'));
 });

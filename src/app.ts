@@ -19,11 +19,14 @@ import teamsRouter from "@/routes/teams.routes";
 import authRouter from '@/routes/auth.routes';
 import teamMemberRouter from '@/routes/teamMembers.routes';
 import teamInvitationRouter from '@/routes/teamInvitations.routes';
+import { protectRoutes } from "./middlewares/protectRoutes";
 
-app.use('/api/teams', teamsRouter);
-app.use('/api/team-members', teamMemberRouter);
-app.use('/api/team-invitations', teamInvitationRouter);
+// 🔐 Attach protected routes
+protectRoutes(app, '/api/teams', teamsRouter);
+protectRoutes(app, '/api/team-members', teamMemberRouter);
+protectRoutes(app, '/api/team-invitations', teamInvitationRouter);
 
+// 🆓 Public auth route
 app.use('/api', authRouter);
 
 // Catch-all for unhandled routes

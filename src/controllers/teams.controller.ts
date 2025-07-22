@@ -21,7 +21,7 @@ export const getTeamswithMembers = asyncHandler(async (req: Request, res: Respon
   const teamsWithMembers = await Promise.all(
     (teams || []).map(async (team) => {
 
-      const { data: membersData } = await getTeamMembersbyId({ team_id: team.id }) as {
+      const { data: membersData } = await getTeamMembersbyId(team.id) as {
         data: TeamMember[] | undefined;
       };
 
