@@ -1,12 +1,4 @@
 const templates = {
-  forgotPassword: (otp: string) => `
-      <html>
-        <body>
-          <h1>Password Reset</h1>
-          <p>We received the reset password request. Please reset your password by entering the code below: <b>${otp}</b></p>
-        </body>
-      </html>
-    `,
   verifyEmail: (otp: string) => `
       <html>
         <body>
@@ -15,42 +7,33 @@ const templates = {
         </body>
       </html>
     `,
-  changePassword: (token: string) => `
-    <html>
-      <body>
-        <h1>Change Password Reset Request</h1>
-        <p>Change Password token is here you can use this for change new password</p>
-        <h4>${token}</h4>
-        <p>If you did not request this, please ignore this email.</p>
-      </body>
-    </html>
+  invitationEmail: ({ role, inviteUrl, invitation_type }: Record<string, any>) => `
+      <html>
+        <body>
+        ${invitation_type === 'project'
+      ? (`<h1>You're Invited to Join one of our teams to Collaborate on a Project in OG01</h1>
+              <p>You've been invited you to join a project workspace on the OG01 platform as a <strong>${role}</strong>.</p>`)
+      : (`<h1>You're Invited to Join OG01</h1>
+               <p>You've been invited to join the OG01 platform with <strong>${role}</strong> access.</p>`)}       
+          <p>Click the link below to get started:</p>
+          <h4><a href="${inviteUrl}">${inviteUrl}</a></h4>
+          <p>This invitation expires in 7 days.</p>
+          <p>If you did not expect this invitation, you can safely ignore this email.</p>
+          <br />
+          <p>Best regards,<br />The OG01 Team</p>
+        </body>
+      </html>
   `,
-  changePasswordAlert: (forgotUrl: string, extrargs = "") => `
-    <html>
-      <body>
-        <h1>You have change your Password</h1>
-        <p>Change Password successfully!</p>
-        <p>If you did not request this, please change password!. Through forgot password</p>
-        <a href="${forgotUrl}">${forgotUrl}</h4>
-      </body>
-    </html>
-  `,
-  // Add more templates as needed
 };
 
-type EmailTemplateType = "forgotpassword" | "verifyemail" | "changepassword" | "changepasswordalert";
+type EmailTemplateType = "verifyemail" | 'invitationemail';
 
-export const mailTemplate = (template: EmailTemplateType, args = "") => {
-  const forgotUrl = `${process.env.APP_DOMAIN}/forgotpassword`;
+export const mailTemplate = (template: EmailTemplateType, { otp, role, inviteUrl, invitation_type }: Record<string, any>) => {
   switch (template) {
-    case "forgotpassword":
-      return templates.forgotPassword(args);
     case "verifyemail":
-      return templates.verifyEmail(args);
-    case "changepassword":
-      return templates.changePassword(args);
-    case "changepasswordalert":
-      return templates.changePasswordAlert(forgotUrl, args);
+      return templates.verifyEmail(otp);
+    case "invitationemail":
+      return templates.invitationEmail({ role, inviteUrl, invitation_type });
     default:
       throw new Error("Invalid email template type");
   }

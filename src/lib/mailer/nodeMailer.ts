@@ -17,7 +17,7 @@ const transporter = nodemailer.createTransport({
 
 // Function to send verification email
 export async function sendVerificationEmail(user: User, otp: string) {
-  const htmlTemplate = mailTemplate("verifyemail", otp);
+  const htmlTemplate = mailTemplate("verifyemail", { otp });
   const mailOptions = {
     from: process.env.EMAIL_SENDER,
     to: user.email,
@@ -34,55 +34,33 @@ export async function sendVerificationEmail(user: User, otp: string) {
   }
 }
 
-export async function sendForgotPasswordEmail(user: User, newPassword: string) {
-  const htmlTemplate = mailTemplate("forgotpassword", newPassword);
+// Function to send verification email
+export async function sendInvitationEmail({ email, token, role, invitation_type }: Record<string, any>) {
+
+  let subject: string;
+  let htmlTemplate: string;
+
+  const inviteUrl = `${process.env.BASE_URL}/join-account/${token}`;
+
+  if (invitation_type === 'project') {
+    subject = "You're invited to collaborate on a Project";
+    htmlTemplate = mailTemplate("invitationemail", { email, role, inviteUrl, invitation_type });
+  } else {
+    subject = "You're invited to join OG01 (Account Management)";
+    htmlTemplate = mailTemplate("invitationemail", { email, role, inviteUrl, invitation_type });
+  }
+
   const mailOptions = {
     from: process.env.EMAIL_SENDER,
-    to: user.email,
-    subject: "Forgot password email",
-    html: htmlTemplate,
+    to: email,
+    subject,
+    html: htmlTemplate
   };
 
   try {
     await transporter.sendMail(mailOptions);
-    console.log("Forgot Password Email sent to" + user.email);
+
   } catch (error) {
-    throw new Error("Failed to send Otp to forgot password. Please try again.");
-  }
-}
-
-export async function sendChangePasswordEmail(user: User, createToken: string) {
-  const htmlTemplate = mailTemplate("changepassword", createToken);
-  const mailOptions = {
-    from: process.env.EMAIL_SENDER,
-    to: user.email,
-    subject: "Change password email",
-    html: htmlTemplate,
-  };
-
-  try {
-    const mailerResponse = await transporter.sendMail(mailOptions);
-    console.log("Forgot Password Email sent to" + user.email);
-    return mailerResponse;
-  } catch (error) {
-    throw error;
-  }
-}
-
-export async function sendChangePasswordAlertEmail(user: User, newPassword = null) {
-  const htmlTemplate = mailTemplate("changepasswordalert", "");
-  const mailOptions = {
-    from: process.env.EMAIL_SENDER,
-    to: user.email,
-    subject: "Change password alert",
-    html: htmlTemplate,
-  };
-
-  try {
-    const mailerResponse = await transporter.sendMail(mailOptions);
-    console.log("Forgot Password Email sent to" + user.email);
-    return mailerResponse;
-  } catch (error) {
-    throw error;
+    throw new ApiError(500, 'Failed to send invitation email. Please try again.')
   }
 }

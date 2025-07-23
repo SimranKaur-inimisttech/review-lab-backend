@@ -1,6 +1,8 @@
 import { supabaseAdmin } from "@/config/supabaseAdmin";
 import { getValidInvitationByToken } from "@/lib/invitations";
+import { sendInvitationEmail } from "@/lib/mailer/nodeMailer";
 import { addTeamMember, checkIfUserIsTeamMember } from "@/lib/teamMembers";
+import { TeamInvitation } from "@/lib/types/teamInvitations";
 import { createUserWithEmailAndPassword, getUserByEmail } from "@/lib/userService";
 import { ApiError } from "@/utils/ApiError";
 import ApiResponse from "@/utils/ApiResponse";
@@ -9,7 +11,9 @@ import { generateExpiryDate, generateToken, validateRequiredFields } from "@/uti
 import { Request, Response } from "express";
 
 export const createTeamInvitation = asyncHandler(async (req: Request, res: Response) => {
-    const { team_id, email } = req.body
+    const { invitation_type, ...insertData } = req.body;
+    const { team_id, email, role } = insertData
+
     //  Lookup user by email
     const user = await getUserByEmail(email);
 
@@ -43,7 +47,7 @@ export const createTeamInvitation = asyncHandler(async (req: Request, res: Respo
     const { data: invitation, error } = await supabaseAdmin
         .from('team_invitations')
         .insert({
-            ...req.body,
+            ...insertData,
             invited_at: new Date().toISOString(),
             expires_at: expiresAt,
             token,
@@ -55,6 +59,8 @@ export const createTeamInvitation = asyncHandler(async (req: Request, res: Respo
     if (error) {
         throw new ApiError(500, error.message);
     }
+
+    await sendInvitationEmail({ email, token, role, invitation_type });
 
     res.status(201).json(new ApiResponse(201, invitation, `Invitation sent to ${email}`));
 });
@@ -150,4 +156,34 @@ export const acceptTeamInvitation = asyncHandler(async (req: Request, res: Respo
     }
 
     res.status(200).json(new ApiResponse(200, null, 'Invitation accepted successfully'));
+});
+
+/* Get all pending invitations */
+export const getPendingInvitations = asyncHandler(async (req: Request, res: Response) => {
+    const { team_id } = req.params
+
+    const { data: invitations, error: invitationsError } = await supabaseAdmin
+        .from('team_invitations')
+        .select('*')
+        .eq('team_id', team_id)
+        .eq('status', 'pending')
+        .gte('expires_at', new Date().toISOString());
+
+    if (invitationsError) {
+        throw new ApiError(500, invitationsError.message);
+    }
+
+    const pendingInvitations: TeamInvitation[] = invitations?.map(inv => ({
+      id: inv.id,
+      team_id: inv.team_id,
+      email: inv.email,
+      role: inv.role,
+      token: inv.token,
+      invited_by: inv.invited_by,
+      invited_at: inv.invited_at,
+      expires_at: inv.expires_at,
+      status: inv.status
+    })) || [];
+
+    res.status(200).json(new ApiResponse(200, pendingInvitations));
 });
