@@ -127,7 +127,6 @@ export const acceptTeamInvitation = asyncHandler(async (req: Request, res: Respo
 
     // Check if the user is already a team member
     await checkIfUserIsTeamMember({
-        supabase: supabaseAdmin,
         team_id: invitation.team_id,
         user_id: user.id,
     });
@@ -158,6 +157,25 @@ export const acceptTeamInvitation = asyncHandler(async (req: Request, res: Respo
     res.status(200).json(new ApiResponse(200, null, 'Invitation accepted successfully'));
 });
 
+/* Decline Team invitation */
+export const declineTeamInvitation = asyncHandler(async (req: Request, res: Response) => {
+    const { token } = req.params;
+
+    const invitation = await getValidInvitationByToken(token);
+
+    const { error } = await supabaseAdmin
+        .from('team_invitations')
+        .update({
+            status: 'declined',
+            declined_at: new Date().toISOString()
+        })
+        .eq('id', invitation.id);
+
+    if (error) throw new ApiError(500, error.message);
+
+    res.status(200).json(new ApiResponse(200, { message: "Invitation declined." }));
+});
+
 /* Get all pending invitations */
 export const getPendingInvitations = asyncHandler(async (req: Request, res: Response) => {
     const { team_id } = req.params
@@ -174,15 +192,15 @@ export const getPendingInvitations = asyncHandler(async (req: Request, res: Resp
     }
 
     const pendingInvitations: TeamInvitation[] = invitations?.map(inv => ({
-      id: inv.id,
-      team_id: inv.team_id,
-      email: inv.email,
-      role: inv.role,
-      token: inv.token,
-      invited_by: inv.invited_by,
-      invited_at: inv.invited_at,
-      expires_at: inv.expires_at,
-      status: inv.status
+        id: inv.id,
+        team_id: inv.team_id,
+        email: inv.email,
+        role: inv.role,
+        token: inv.token,
+        invited_by: inv.invited_by,
+        invited_at: inv.invited_at,
+        expires_at: inv.expires_at,
+        status: inv.status
     })) || [];
 
     res.status(200).json(new ApiResponse(200, pendingInvitations));

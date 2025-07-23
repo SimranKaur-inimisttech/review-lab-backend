@@ -39,13 +39,14 @@ export async function sendInvitationEmail({ email, token, role, invitation_type 
 
   let subject: string;
   let htmlTemplate: string;
-
-  const inviteUrl = `${process.env.BASE_URL}/join-account/${token}`;
+  let inviteUrl :string;
 
   if (invitation_type === 'project') {
+    inviteUrl = `${process.env.BASE_URL}/invite/${token}`;
     subject = "You're invited to collaborate on a Project";
     htmlTemplate = mailTemplate("invitationemail", { email, role, inviteUrl, invitation_type });
   } else {
+    inviteUrl = `${process.env.BASE_URL}/join-account/${token}`;
     subject = "You're invited to join OG01 (Account Management)";
     htmlTemplate = mailTemplate("invitationemail", { email, role, inviteUrl, invitation_type });
   }

@@ -24,9 +24,9 @@ import { protectRoutes } from "./middlewares/protectRoutes";
 // 🔐 Attach protected routes
 protectRoutes(app, '/api/teams', teamsRouter);
 protectRoutes(app, '/api/team-members', teamMemberRouter);
-protectRoutes(app, '/api/team-invitations', teamInvitationRouter);
 
 // 🆓 Public auth route
+app.use('/api/team-invitations', teamInvitationRouter);
 app.use('/api', authRouter);
 
 // Catch-all for unhandled routes
