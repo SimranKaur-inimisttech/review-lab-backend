@@ -1,5 +1,7 @@
+import { supabaseAdmin } from "@/config/supabaseAdmin";
 import { addTeamMember, getTeamMembersbyId } from "@/lib/teamMembers";
 import { AccountTeamMember } from "@/lib/types/teamMember";
+import { ApiError } from "@/utils/ApiError";
 import ApiResponse from "@/utils/ApiResponse";
 import { asyncHandler } from "@/utils/asyncHandler";
 import { validateRequiredFields } from "@/utils/helpers";
@@ -18,7 +20,7 @@ export const getAccountTeamMembers = asyncHandler(async (req: Request, res: Resp
   const { team_id } = req.params;
   const { id, email, role, user_metadata: { full_name } } = req.user as User
 
-  const { data: membersData, success } = await getTeamMembersbyId(team_id,false) as {
+  const { data: membersData, success } = await getTeamMembersbyId(team_id, false) as {
     data: any[] | undefined;
     success: boolean
   };
@@ -59,4 +61,22 @@ export const getAccountTeamMembers = asyncHandler(async (req: Request, res: Resp
   }
 
   res.status(200).json(new ApiResponse(200, members, 'Team members fetched successfully'));
+});
+
+export const removeTeamMember = asyncHandler(async (req: Request, res: Response) => {
+  const { teamId, userId } = req.params
+
+  const { error } = await supabaseAdmin
+    .from('team_members')
+    .update({
+      is_active: false,
+    })
+    .eq('team_id', teamId)
+    .eq('user_id', userId);
+
+  if (error) {
+    throw new ApiError(500, error.message);
+  }
+
+  res.status(200).json(new ApiResponse(200, undefined, 'Team member deleted successfully'));
 });
