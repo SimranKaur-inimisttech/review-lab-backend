@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/config/supabaseAdmin";
+import { syncUserWithHubspot } from "@/lib/hubspotClient";
 import { getValidInvitationByToken } from "@/lib/invitations";
 import { sendInvitationEmail } from "@/lib/mailer/nodeMailer";
 import { addTeamMember, checkIfUserIsTeamMember } from "@/lib/teamMembers";
@@ -125,6 +126,20 @@ export const acceptTeamInvitation = asyncHandler(async (req: Request, res: Respo
         user = await createUserWithEmailAndPassword({ ...req.body, role: invitation.role });
     }
 
+    // Mark invite as accepted
+    const { error: updateError } = await supabaseAdmin
+        .from('team_invitations')
+        .update({
+            status: 'accepted',
+            accepted_at: new Date().toISOString()
+        })
+        .eq('id', invitation.id)
+        .eq('token', token);
+
+    if (updateError) {
+        throw new ApiError(400, updateError.message);
+    }
+
     // Check if the user is already a team member
     await checkIfUserIsTeamMember({
         team_id: invitation.team_id,
@@ -140,19 +155,10 @@ export const acceptTeamInvitation = asyncHandler(async (req: Request, res: Respo
         invited_by: invitation.invited_by,
         invited_at: invitation.invited_at
     })
-    // Mark invite as accepted
-    const { error: updateError } = await supabaseAdmin
-        .from('team_invitations')
-        .update({
-            status: 'accepted',
-            accepted_at: new Date().toISOString()
-        })
-        .eq('id', invitation.id)
-        .eq('token', token);
 
-    if (updateError) {
-        throw new ApiError(400, updateError.message);
-    }
+    // Trigger HubSpot sync
+    await syncUserWithHubspot(user, invitation);
+
 
     res.status(200).json(new ApiResponse(200, null, 'Invitation accepted successfully'));
 });
