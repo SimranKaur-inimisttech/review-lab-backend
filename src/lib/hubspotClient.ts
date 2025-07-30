@@ -1,5 +1,6 @@
 import Bottleneck from 'bottleneck';
 import axios from 'axios';
+import { HubSpotCompany, HubSpotContact, HubSpotDeal, SyncResult } from './types/hubspot';
 
 // ============================================
 // HubSpot Configuration
@@ -28,10 +29,10 @@ const hubspotLimiter = new Bottleneck({
 });
 
 // ============================================
-// Browser-Compatible HubSpot API Client
+// HubSpot API Client
 // ============================================
 
-class BrowserHubSpotClient {
+class HubSpotClient {
   private apiToken: string;
   private baseUrl: string;
 
@@ -50,7 +51,7 @@ class BrowserHubSpotClient {
       },
       ...(data && { data })
     };
-
+    
     const response = await axios(config);
     return response.data;
   }
@@ -101,57 +102,7 @@ class BrowserHubSpotClient {
   }
 }
 
-const hubspotClient = new BrowserHubSpotClient(HUBSPOT_CONFIG.apiToken || '', HUBSPOT_CONFIG.apiBase || '');
-
-// ============================================
-// TypeScript Interfaces
-// ============================================
-
-export interface HubSpotContact {
-  id?: string;
-  email: string;
-  firstname?: string;
-  lastname?: string;
-  company?: string;
-  phone?: string;
-  lifecycle_stage?: 'subscriber' | 'lead' | 'customer' | 'evangelist';
-  og01_user_id?: string;
-  og01_plan_tier?: 'starter_pro' | 'premium' | 'enterprise' | 'agency';
-  og01_signup_source?: 'wordpress' | 'direct_app' | 'referral';
-  og01_subscription_status?: 'active' | 'cancelled' | 'past_due' | 'trialing';
-  og01_total_spent?: number;
-  og01_course_access_level?: string;
-  og01_feature_addons?: string;
-}
-
-export interface HubSpotDeal {
-  id?: string;
-  dealname: string;
-  amount: number;
-  dealstage: string;
-  pipeline: 'subscription' | 'course' | 'addon' | 'agency';
-  og01_purchase_type?: 'upgrade' | 'addon' | 'course' | 'renewal';
-  og01_stripe_payment_id?: string;
-  og01_supabase_transaction_id?: string;
-  closedate?: string;
-  hubspot_owner_id?: string;
-}
-
-export interface HubSpotCompany {
-  id?: string;
-  name: string;
-  domain?: string;
-  og01_agency_tier?: boolean;
-  og01_seat_count?: number;
-  og01_company_id?: string;
-}
-
-export interface SyncResult {
-  success: boolean;
-  hubspotId?: string;
-  error?: string;
-  data?: Record<string, unknown>;
-}
+const hubspotClient = new HubSpotClient(HUBSPOT_CONFIG.apiToken || '', HUBSPOT_CONFIG.apiBase || '');
 
 // ============================================
 // Utility Functions
@@ -196,26 +147,25 @@ const logSync = async (
 // ============================================
 
 export const createContact = async (contactData: HubSpotContact): Promise<SyncResult> => {
-  if (!HUBSPOT_CONFIG.syncEnabled) {
+  if (!isHubSpotSyncEnabled()) {
     console.log('HubSpot sync disabled, skipping contact creation');
     return { success: true, hubspotId: 'sync_disabled' };
   }
 
   try {
     const properties = {
-      email: contactData.email,
+      email: contactData.email || '',
       firstname: contactData.firstname || '',
       lastname: contactData.lastname || '',
       company: contactData.company || '',
       phone: contactData.phone || '',
-      lifecycle_stage: contactData.lifecycle_stage || 'subscriber',
+      lifecyclestage: contactData.lifecyclestage || 'subscriber',
       og01_user_id: contactData.og01_user_id || '',
       og01_plan_tier: contactData.og01_plan_tier || 'none',
-      og01_signup_source: contactData.og01_signup_source || 'direct_app',
+      og01_signup_source: contactData.og01_signup_source || 'Direct App',
       og01_subscription_status: contactData.og01_subscription_status || 'inactive',
       og01_total_spent: contactData.og01_total_spent?.toString() || '0',
-      og01_course_access_level: contactData.og01_course_access_level || '[]',
-      og01_feature_addons: contactData.og01_feature_addons || '[]'
+      og01_course_access_level: contactData.og01_course_access_level || 'Premium Courses',
     };
 
     const result = await hubspotLimiter.schedule(() =>
@@ -245,7 +195,7 @@ export const updateContact = async (
   hubspotContactId: string,
   contactData: Partial<HubSpotContact>
 ): Promise<SyncResult> => {
-  if (!HUBSPOT_CONFIG.syncEnabled) {
+  if (!isHubSpotSyncEnabled()) {
     return { success: true, hubspotId: hubspotContactId };
   }
 
@@ -293,7 +243,7 @@ export const getContact = async (hubspotContactId: string): Promise<SyncResult> 
     const result = await hubspotLimiter.schedule(() =>
       retryWithBackoff(() =>
         hubspotClient.getContactById(hubspotContactId, [
-          'email', 'firstname', 'lastname', 'company', 'phone', 'lifecycle_stage',
+          'email', 'firstname', 'lastname', 'company', 'phone', 'lifecyclestage',
           'og01_user_id', 'og01_plan_tier', 'og01_signup_source',
           'og01_subscription_status', 'og01_total_spent',
           'og01_course_access_level', 'og01_feature_addons'
@@ -326,7 +276,7 @@ export const searchContactByEmail = async (email: string): Promise<SyncResult> =
         }]
       }],
       properties: [
-        'email', 'firstname', 'lastname', 'company', 'phone', 'lifecycle_stage',
+        'email', 'firstname', 'lastname', 'company', 'phone', 'lifecyclestage',
         'og01_user_id', 'og01_plan_tier', 'og01_signup_source',
         'og01_subscription_status', 'og01_total_spent',
         'og01_course_access_level', 'og01_feature_addons'
@@ -365,7 +315,7 @@ export const searchContactByEmail = async (email: string): Promise<SyncResult> =
 // ============================================
 
 export const createDeal = async (dealData: HubSpotDeal): Promise<SyncResult> => {
-  if (!HUBSPOT_CONFIG.syncEnabled) {
+  if (!isHubSpotSyncEnabled()) {
     return { success: true, hubspotId: 'sync_disabled' };
   }
 
@@ -409,7 +359,7 @@ export const createDeal = async (dealData: HubSpotDeal): Promise<SyncResult> => 
 // ============================================
 
 export const createCompany = async (companyData: HubSpotCompany): Promise<SyncResult> => {
-  if (!HUBSPOT_CONFIG.syncEnabled) {
+  if (!isHubSpotSyncEnabled()) {
     return { success: true, hubspotId: 'sync_disabled' };
   }
 
@@ -508,35 +458,4 @@ export const isHubSpotSyncEnabled = (): boolean => {
 };
 
 // Export the client for advanced usage
-export { hubspotClient, hubspotLimiter }; 
-
-// ============================================
-// Sync User with Hubspot
-// ============================================
-
-export const syncUserWithHubspot = async (user: UserType, invitation?: InvitationType) => {
-  const contactData = {
-    email: user.email,
-    firstname: user.firstName,
-    lastname: user.lastName,
-    role: invitation?.role,
-    team_id: invitation?.team_id,
-    // Add any custom HubSpot properties here
-  };
-
-  try {
-    const existingContact = await searchContactByEmail(user.email);
-
-    let result;
-    if (existingContact.success && existingContact.hubspotId) {
-      result = await updateContact(existingContact.hubspotId, contactData);
-    } else {
-      result = await createContact(contactData);
-    }
-
-    return result;
-  } catch (error) {
-    console.error("HubSpot sync error:", error);
-    return { success: false, error };
-  }
-};
+export { hubspotClient, hubspotLimiter };

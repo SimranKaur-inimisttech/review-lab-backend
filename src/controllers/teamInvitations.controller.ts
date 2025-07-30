@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/config/supabaseAdmin";
-import { syncUserWithHubspot } from "@/lib/hubspotClient";
+import { syncUserWithHubspot } from "@/lib/hubspotIntegration";
 import { getValidInvitationByToken } from "@/lib/invitations";
 import { sendInvitationEmail } from "@/lib/mailer/nodeMailer";
 import { addTeamMember, checkIfUserIsTeamMember } from "@/lib/teamMembers";
@@ -112,6 +112,8 @@ export const acceptTeamInvitation = asyncHandler(async (req: Request, res: Respo
 
     const invitation = await getValidInvitationByToken(token);
 
+    let userCreated = false;
+
     // Check if a user with this email already exists
     let user = await getUserByEmail(invitation.email);
 
@@ -124,6 +126,7 @@ export const acceptTeamInvitation = asyncHandler(async (req: Request, res: Respo
         }
 
         user = await createUserWithEmailAndPassword({ ...req.body, role: invitation.role });
+        userCreated = true
     }
 
     // Mark invite as accepted
@@ -157,8 +160,9 @@ export const acceptTeamInvitation = asyncHandler(async (req: Request, res: Respo
     })
 
     // Trigger HubSpot sync
-    await syncUserWithHubspot(user, invitation);
-
+    if (userCreated) {
+        await syncUserWithHubspot(user);
+    }
 
     res.status(200).json(new ApiResponse(200, null, 'Invitation accepted successfully'));
 });

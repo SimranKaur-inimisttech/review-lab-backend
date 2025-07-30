@@ -19,15 +19,17 @@ import teamsRouter from "@/routes/teams.routes";
 import authRouter from '@/routes/auth.routes';
 import teamMemberRouter from '@/routes/teamMembers.routes';
 import teamInvitationRouter from '@/routes/teamInvitations.routes';
+import hubspotRouter from '@/routes/hubspot.routes';
 import { protectRoutes } from "./middlewares/protectRoutes";
-
-// 🔐 Attach protected routes
-protectRoutes(app, '/api/teams', teamsRouter);
-protectRoutes(app, '/api/team-members', teamMemberRouter);
 
 // 🆓 Public auth route
 app.use('/api/team-invitations', teamInvitationRouter);
 app.use('/api', authRouter);
+
+// 🔐 Attach protected routes
+protectRoutes(app, '/api/teams', teamsRouter);
+protectRoutes(app, '/api/team-members', teamMemberRouter);
+protectRoutes(app, '/api', hubspotRouter);
 
 // Catch-all for unhandled routes
 app.use((req, res) => {
