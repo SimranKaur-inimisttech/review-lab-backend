@@ -72,19 +72,33 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   if (!data) {
     throw new ApiError(400, 'User not found');
   }
-  
+
   if (!data.is_email_verified) {
     throw new ApiError(400, 'Email is not verified');
   }
 
-  const { data: user, error: userError } = await req.supabase.auth.signInWithPassword({
+  const { data: { session }, error: userError } = await req.supabase.auth.signInWithPassword({
     email,
     password
   })
 
+  const user = session?.user;
+  const access_token = session?.access_token;
+
   if (userError) {
     throw new ApiError(401, userError.message || 'Invalid email or password');
   }
+  res.cookie('refresh_token', session?.refresh_token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'strict',
+    maxAge: 60 * 60 * 24 * 7, // 7 days
+  });
+  res.cookie('last_refresh', Date.now().toString(), {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: true,
+  });
 
-  res.status(200).json(new ApiResponse(200, user, 'Login successful'));
+  res.status(200).json(new ApiResponse(200, { user, access_token }, 'Login successful'));
 });

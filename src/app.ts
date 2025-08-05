@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import errorHandler from "@/middlewares/errorHandler";
+import cookieParser from 'cookie-parser';
 import { attachSupabase } from "@/middlewares/supabaseClient";
 
 export const app = express();
@@ -8,9 +9,12 @@ export const app = express();
 // Middleware
 app.use(cors({
   origin: 'http://localhost:8888',
-  credentials: true
+  credentials: true,
+  exposedHeaders: ['x-access-token'] 
 }));
 app.use(express.json());
+
+app.use(cookieParser());
 
 app.use(attachSupabase);
 
