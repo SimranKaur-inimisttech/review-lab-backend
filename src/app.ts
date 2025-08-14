@@ -25,6 +25,7 @@ import teamMemberRouter from '@/routes/teamMembers.routes';
 import teamInvitationRouter from '@/routes/teamInvitations.routes';
 import hubspotRouter from '@/routes/hubspot.routes';
 import { protectRoutes } from "./middlewares/protectRoutes";
+import semrushRoutes from '@/routes/semrush.routes';
 
 // 🆓 Public auth route
 app.use('/api/team-invitations', teamInvitationRouter);
@@ -34,6 +35,8 @@ app.use('/api', authRouter);
 protectRoutes(app, '/api/teams', teamsRouter);
 protectRoutes(app, '/api/team-members', teamMemberRouter);
 protectRoutes(app, '/api', hubspotRouter);
+protectRoutes(app, '/api/semrush', semrushRoutes);
+
 
 // Catch-all for unhandled routes
 app.use((req, res) => {

@@ -2,26 +2,27 @@
 import { ApiError } from "@/utils/ApiError";
 import { NextFunction, Request, Response } from "express";
 
-const TEN_MINUTES = 10 * 60 * 1000;
+const TEN_MINUTES = 5 * 60 * 1000;
 
 export const refreshAccessToken = async (req: Request, res: Response, next: NextFunction) => {
     const accessToken = req.headers.authorization?.split(' ')[1];
     const refreshToken = req.cookies?.refresh_token;
     const lastRefresh = Number(req.cookies?.last_refresh || '0');
     const now = Date.now();
-
+    console.log("refesh token===================>", refreshToken,accessToken)
     if (!accessToken || !refreshToken) {
         return next(); // Not authenticated, let auth middleware handle this
     }
 
     try {
         if (now - lastRefresh >= TEN_MINUTES) {
+            console.log("working refeh token =====>>>>>>>>>>>")
             const { data, error } = await req.supabase.auth.refreshSession({ refresh_token: refreshToken });
             if (error || !data?.session) {
                 throw new ApiError(401, 'Session expired, please log in again.');
             }
 
-            // // Send new access token in header for this request
+            // Send new access token in header for this request
             req.headers.authorization = `Bearer ${data.session.access_token}`;
             // ✅ Store new token for future middlewares
             res.locals.accessToken = data.session.access_token;
