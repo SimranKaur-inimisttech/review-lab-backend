@@ -90,14 +90,15 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   }
   res.cookie('refresh_token', session?.refresh_token, {
     httpOnly: true,
-    secure: true,
+    secure: process.env.NODE_ENV === "production",
     sameSite: 'strict',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 7 * 1000, // 7 days
   });
   res.cookie('last_refresh', Date.now().toString(), {
     httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
     sameSite: 'strict',
-    secure: true,
+    maxAge: 60 * 60 * 24 * 7 * 1000, // 7 days
   });
 
   res.status(200).json(new ApiResponse(200, { user, access_token }, 'Login successful'));
