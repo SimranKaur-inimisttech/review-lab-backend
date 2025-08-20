@@ -1,38 +1,81 @@
-import { syncUserWithHubspot } from "@/lib/hubspotIntegration";
 import { semrushService } from "@/lib/semrushService";
-import { getUserByEmail } from "@/lib/userService";
 import { ApiError } from "@/utils/ApiError";
 import ApiResponse from "@/utils/ApiResponse";
 import { asyncHandler } from "@/utils/asyncHandler";
-import { validateRequiredFields } from "@/utils/helpers";
 import { Request, Response } from "express";
+import { ParsedQs } from "qs";
 
-export const getKeywordAnalysis = asyncHandler(async (req: Request, res: Response) => {
+interface KeywordQuery extends ParsedQs {
+    keyword: string;
+    database?: string;
+    limit?: string;
+    offset?: string;
+}
 
-        const { keyword, database } = req.query;
-        const userId = req.user.id;
-        const teamId = req.user.teamId;
+export const getRelatedKeywordAnalysis = asyncHandler(async (req: Request, res: Response) => {
+    const { keyword, database, limit = "30", offset = "0" } = req.query as KeywordQuery;
 
-        const data = await semrushService.getKeywordData(keyword, userId, teamId, database);
-        res.json(data);
-   
+    if (!keyword) {
+        throw new ApiError(400, `Keyword parameter is required`);
+    }
 
-    // 2. Fetch from Semrush API
-    const semrushUrl = `https://api.semrush.com/?type=phrase_this&key=${SEMRUSH_API_KEY}&phrase=${encodeURIComponent(
-        keyword
-    )}`;
+    const userId = req.user!.id;
+    const numericLimit = Math.min(parseInt(limit, 10) || 30, 100);
+    const numericOffset = parseInt(offset, 10) || 0;
 
-    // validateRequiredFields(req.body, ['email']);
+    const related = await semrushService.getRelatedKeywords(
+        keyword,
+        userId,
+        database,
+        numericLimit,
+        numericOffset
+    );
 
-    // const { email } = req.body;
+    const totalAvailable = numericOffset + related.length + (related.length === numericLimit ? numericLimit : 0);
 
-    // const user = await getUserByEmail(email);
+    res.status(200).json(new ApiResponse(200, {
+        keyword: keyword.trim(),
+        database: database || 'global',
+        totalResults: related.length,
+        totalAvailable,
+        currentPage: {
+            offset: numericOffset,
+            limit: numericLimit,
+            count: related.length
+        },
+        hasMore: related.length === numericLimit,
+        relatedKeywords: related
+    }, "Related Keyword Data fetched successfully"));
+});
 
-    // const { data, success, error } = await syncUserWithHubspot(user);
+export const getGlobalKeywordAnalysis = asyncHandler(async (req: Request, res: Response) => {
+    const { keyword } = req.query as KeywordQuery;
 
-    // if (!success) {
-    //     throw new ApiError(500, `HubSpot sync failed`);
-    // }
+    if (!keyword) {
+        throw new ApiError(400, `Keyword parameter is required`);
+    }
 
-    // res.status(200).json(new ApiResponse(200, data, "User synced to HubSpot"));
+    const userId = req.user!.id;
+
+    const data = await semrushService.getGlobalKeywordData(keyword, userId);
+
+    res.status(200).json(new ApiResponse(200, data, "Global Keyword Data fetched successfully"));
+});
+
+export const getCountryKeywordAnalysis = asyncHandler(async (req: Request, res: Response) => {
+    const { keyword, database } = req.query as KeywordQuery;
+
+    if (!keyword) {
+        throw new ApiError(400, `Keyword parameter is required`);
+    }
+
+    const userId = req.user!.id;
+
+    const data = await semrushService.getCountryKeywordData(
+        keyword,
+        userId,
+        database as string
+    );
+
+    res.status(200).json(new ApiResponse(200, data, "Country Keyword Data fetched successfully"));
 });

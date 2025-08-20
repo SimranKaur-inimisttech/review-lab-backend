@@ -154,7 +154,6 @@ export class SEMrushService {
     // Log API usage for billing tracking
     async logUsage(
         userId: string,
-        teamId: string | null,
         apiEndpoint: string,
         requestType: string,
         status: 'success' | 'failed' | 'rate_limited' | 'quota_exceeded',
@@ -170,7 +169,7 @@ export class SEMrushService {
             // Log the API call
             await supabaseAdmin.from('api_usage_logs').insert({
                 user_id: userId,
-                team_id: teamId,
+                team_id: null,
                 api_endpoint: apiEndpoint,
                 api_provider: 'semrush',
                 request_type: requestType,
@@ -201,7 +200,6 @@ export class SEMrushService {
         reportType: string,
         params: Record<string, string>,
         userId: string,
-        teamId: string | null,
         apiEndpoint: string,
         requestType: string,
         creditsRequired: number = 1,
@@ -211,14 +209,13 @@ export class SEMrushService {
 
         // 1️⃣ Check cache first
         const cachedData = await cacheService.get(cacheTable, params.phrase);
-        console.log("cachedData====>>>>>>>>>>>>>>>>>>",cachedData)
 
         if (cachedData) {
             return cachedData;
         }
 
         // 2️⃣ Only check quota if cache is empty
-        await this.checkQuota(userId, apiEndpoint, creditsRequired);
+        // await this.checkQuota(userId, apiEndpoint, creditsRequired);
 
         // 3️⃣ Make API request to SEMrush
         const url = new URL('/', this.baseUrl);
@@ -233,58 +230,59 @@ export class SEMrushService {
 
         let lastError: Error = new Error("Unknown error");
 
-        for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-            try {
-                const response = await fetch(url.toString());
+        // for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+        try {
 
-                if (!response.ok) {
-                    if (response.status === 429) {
-                        const retryAfter = parseInt(response.headers.get('Retry-After') || '60');
-                        await this.logUsage(
-                            userId, teamId, apiEndpoint, requestType, 'rate_limited', 0,
-                            params.domain, params.phrase, `Rate limited, retry after ${retryAfter}s`
-                        );
-                        throw new RateLimitError(`Rate limited by SEMrush API`, retryAfter);
-                    }
-                    if (response.status === 402) {
-                        await this.logUsage(
-                            userId, teamId, apiEndpoint, requestType, 'quota_exceeded', 0,
-                            params.domain, params.phrase, 'SEMrush API quota exceeded'
-                        );
-                        throw new QuotaExceededError('SEMrush API quota exceeded', apiEndpoint);
-                    }
-                    throw new SEMrushError(
-                        `SEMrush API error: ${response.status} ${response.statusText}`,
-                        response.status
+            const response = await fetch(url.toString());
+
+            if (!response.ok) {
+                if (response.status === 429) {
+                    const retryAfter = parseInt(response.headers.get('Retry-After') || '60');
+                    await this.logUsage(
+                        userId, apiEndpoint, requestType, 'rate_limited', 0,
+                        params.domain, params.phrase, `Rate limited, retry after ${retryAfter}s`
                     );
+                    throw new RateLimitError(`Rate limited by SEMrush API`, retryAfter);
                 }
-                // Log successful API usage
-                await this.logUsage(
-                    userId, teamId, apiEndpoint, requestType, 'success', creditsRequired,
-                    params.domain, params.phrase
+                if (response.status === 402) {
+                    await this.logUsage(
+                        userId, apiEndpoint, requestType, 'quota_exceeded', 0,
+                        params.domain, params.phrase, 'SEMrush API quota exceeded'
+                    );
+                    throw new QuotaExceededError('SEMrush API quota exceeded', apiEndpoint);
+                }
+                throw new SEMrushError(
+                    `SEMrush API error: ${response.status} ${response.statusText}`,
+                    response.status
                 );
-
-                const result = await response.text();
-
-                // Store in cache
-                await cacheService.set(cacheTable, params.phrase, result, cacheTtlHours);
-
-                return result; // SEMrush returns CSV text, not JSON
-            } catch (error) {
-                lastError = error instanceof Error ? error : new Error(String(error));
-
-                if (error instanceof RateLimitError || error instanceof QuotaExceededError) {
-                    throw error;
-                }
-
-                if (attempt < this.maxRetries) {
-                    await new Promise(resolve => setTimeout(resolve, this.retryDelay * (attempt + 1)));
-                }
             }
+            // Log successful API usage
+            await this.logUsage(
+                userId, apiEndpoint, requestType, 'success', creditsRequired,
+                params.domain, params.phrase
+            );
+            const result = await response.text();
+
+
+            // Store in cache
+            await cacheService.set(cacheTable, params.phrase, result, cacheTtlHours);
+
+            return result; // SEMrush returns CSV text, not JSON
+        } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error));
+
+            if (error instanceof RateLimitError || error instanceof QuotaExceededError) {
+                throw error;
+            }
+
+            // if (attempt < this.maxRetries) {
+            //     await new Promise(resolve => setTimeout(resolve, this.retryDelay * (attempt + 1)));
+            // }
         }
+        // }
         // Log failed API call
         await this.logUsage(
-            userId, teamId, apiEndpoint, requestType, 'failed', 0,
+            userId, apiEndpoint, requestType, 'failed', 0,
             params.domain, params.phrase, lastError.message
         );
 
@@ -297,7 +295,7 @@ export class SEMrushService {
     }
 
     // Get domain overview data (with optional database parameter)
-    async getDomainOverview(domain: string, userId: string, teamId: string, database?: string): Promise<DomainOverview> {
+    async getDomainOverview(domain: string, userId: string, database?: string): Promise<DomainOverview> {
 
         const params: Record<string, string> = {
             domain,
@@ -309,13 +307,13 @@ export class SEMrushService {
             params.database = database;
         }
 
-        const csvData = await this.makeApiRequest('domain_rank', params, userId, teamId, 'competitor_analysis', 'domain_overview', 2, 'domain');
+        const csvData = await this.makeApiRequest('domain_rank', params, userId, 'competitor_analysis', 'domain_overview', 2, 'domain');
 
         return this.transformDomainOverview(csvData);
     }
 
     // Get keyword data (with optional database parameter)
-    async getKeywordData(keyword: string, userId: string, teamId: string, database?: string): Promise<KeywordData> {
+    async getKeywordData(keyword: string, userId: string, database?: string): Promise<KeywordData> {
 
         const params: Record<string, string> = {
             phrase: keyword,
@@ -327,13 +325,13 @@ export class SEMrushService {
             params.database = database;
         }
 
-        const csvData = await this.makeApiRequest('phrase_this', params, userId, teamId, 'keyword_research', 'keyword_overview', 1, 'keywords');
+        const csvData = await this.makeApiRequest('phrase_this', params, userId, 'keyword_research', 'keyword_overview', 1, 'keywords');
 
         return this.transformKeywordData(csvData, database);
     }
 
     // Get global keyword data specifically (uses phrase_all endpoint)
-    async getGlobalKeywordData(keyword: string, userId: string, teamId: string): Promise<KeywordData> {
+    async getGlobalKeywordData(keyword: string, userId: string): Promise<KeywordData> {
         const params: Record<string, string> = {
             phrase: keyword,
             export_columns: 'Db,Ph,Nq,Cp,Co,Kd'
@@ -341,7 +339,7 @@ export class SEMrushService {
 
         try {
             // Use phrase_all for global data across all databases
-            const csvData = await this.makeApiRequest('phrase_all', params, userId, teamId, 'keyword_research', 'keyword_research', 1, 'keywords');
+            const csvData = await this.makeApiRequest('phrase_all', params, userId, 'keyword_research', 'keyword_research', 1, 'keywords');
 
             return this.transformGlobalKeywordData(csvData);
         } catch (error) {
@@ -367,7 +365,6 @@ export class SEMrushService {
     async getRelatedKeywords(
         keyword: string,
         userId: string,
-        teamId: string,
         database?: string,
         limit: number = 20,
         offset: number = 0
@@ -389,7 +386,7 @@ export class SEMrushService {
             params.database = database;
         }
 
-        const csvData = await this.makeApiRequest('phrase_related', params, userId, teamId, 'keyword_research', 'keyword_research', 1, 'keywords');
+        const csvData = await this.makeApiRequest('phrase_related', params, userId, 'keyword_research', 'keyword_research', 1, 'keywords');
 
         return this.transformRelatedKeywords(csvData, database);
     }
