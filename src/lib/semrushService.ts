@@ -35,6 +35,17 @@ export interface RelatedKeyword {
     database?: string;
 }
 
+export interface KeywordTableData {
+    user_id: string;
+    keyword: string;
+    search_volume: number;
+    keyword_difficulty: number;
+    cpc: number;
+    competition: number;
+    competition_level: 'low' | 'medium' | 'high';
+    database?: string;
+}
+
 export class SEMrushError extends Error {
     constructor(
         message: string,
@@ -203,16 +214,7 @@ export class SEMrushService {
         apiEndpoint: string,
         requestType: string,
         creditsRequired: number = 1,
-        cacheTable: string,
-        cacheTtlHours: number = 36
     ): Promise<string> {
-
-        // 1️⃣ Check cache first
-        const cachedData = await cacheService.get(cacheTable, params.phrase);
-
-        if (cachedData) {
-            return cachedData;
-        }
 
         // 2️⃣ Only check quota if cache is empty
         // await this.checkQuota(userId, apiEndpoint, creditsRequired);
@@ -262,11 +264,7 @@ export class SEMrushService {
                 params.domain, params.phrase
             );
             const result = await response.text();
-
-
-            // Store in cache
-            await cacheService.set(cacheTable, params.phrase, result, cacheTtlHours);
-
+            
             return result; // SEMrush returns CSV text, not JSON
         } catch (error) {
             lastError = error instanceof Error ? error : new Error(String(error));
@@ -307,13 +305,13 @@ export class SEMrushService {
             params.database = database;
         }
 
-        const csvData = await this.makeApiRequest('domain_rank', params, userId, 'competitor_analysis', 'domain_overview', 2, 'domain');
+        const csvData = await this.makeApiRequest('domain_rank', params, userId, 'competitor_analysis', 'domain_overview', 2);
 
         return this.transformDomainOverview(csvData);
     }
 
     // Get keyword data (with optional database parameter)
-    async getKeywordData(keyword: string, userId: string, database?: string): Promise<KeywordData> {
+    async getKeywordData(keyword: string, userId: string, database: string): Promise<KeywordData> {
 
         const params: Record<string, string> = {
             phrase: keyword,
@@ -325,8 +323,20 @@ export class SEMrushService {
             params.database = database;
         }
 
-        const csvData = await this.makeApiRequest('phrase_this', params, userId, 'keyword_research', 'keyword_overview', 1, 'keywords');
+        // Check cache first
+        const cachedData = await cacheService.get('keywords', keyword, database);
+        if (cachedData) {
+            return this.formatKeywordResponse(cachedData)
+        }
 
+        const csvData = await this.makeApiRequest('phrase_this', params, userId, 'keyword_research', 'keyword_overview', 1);
+
+        const parsedData = this.transformKeywordData(csvData, database);
+
+        const tableData = this.formatKeywordTableData(parsedData, userId)
+
+        // Store in cache
+        await cacheService.set('keywords', tableData, 36);
         return this.transformKeywordData(csvData, database);
     }
 
@@ -337,15 +347,22 @@ export class SEMrushService {
             export_columns: 'Db,Ph,Nq,Cp,Co,Kd'
         };
 
-        try {
-            // Use phrase_all for global data across all databases
-            const csvData = await this.makeApiRequest('phrase_all', params, userId, 'keyword_research', 'keyword_research', 1, 'keywords');
-
-            return this.transformGlobalKeywordData(csvData);
-        } catch (error) {
-            console.error('Global keyword research failed:', error);
-            throw error;
+        // Check cache first
+        const cachedData = await cacheService.get('keywords', keyword, 'global');
+        if (cachedData) {
+            return this.formatKeywordResponse(cachedData)
         }
+
+        // Use phrase_all for global data across all databases
+        const csvData = await this.makeApiRequest('phrase_all', params, userId, 'keyword_research', 'keyword_research', 1);
+
+        const parsedData = this.transformGlobalKeywordData(csvData);
+
+        const tableData = this.formatKeywordTableData(parsedData, userId)
+
+        // Store in cache
+        await cacheService.set('keywords', tableData, 36);
+        return parsedData;
     }
 
     // Get country-specific keyword data
@@ -365,7 +382,7 @@ export class SEMrushService {
     async getRelatedKeywords(
         keyword: string,
         userId: string,
-        database?: string,
+        database: string,
         limit: number = 20,
         offset: number = 0
     ): Promise<RelatedKeyword[]> {
@@ -385,10 +402,30 @@ export class SEMrushService {
         if (database && database !== 'global') {
             params.database = database;
         }
+        // Check cache first
+        const cachedData = await cacheService.get('keywords', keyword, database);
+        if (cachedData) {
+            return this.formatKeywordResponse(cachedData)
+        }
 
-        const csvData = await this.makeApiRequest('phrase_related', params, userId, 'keyword_research', 'keyword_research', 1, 'keywords');
+        const csvData = await this.makeApiRequest('phrase_related', params, userId, 'keyword_research', 'keyword_research', 1);
 
-        return this.transformRelatedKeywords(csvData, database);
+        // check for Not found error message
+        if (csvData.includes('ERROR 50 :: NOTHING FOUND')) {
+            console.warn(`No related keywords found for "${keyword}" in "${database || 'global'}"`);
+            return [];
+        }
+        const parsedData = this.transformRelatedKeywords(csvData, database);
+        // const cachedData = await cacheService.get('keywords', keyword, database);
+
+        // if (cachedData) {
+        //     console.log("cachedData", cachedData)
+        //     // return cachedData;
+        // }
+
+        // Store in cache
+        await cacheService.set('keywords', { ...cachedData, related_keywords: parsedData }, 36);
+        return parsedData
     }
 
     // Transform domain overview response (CSV format)
@@ -535,6 +572,33 @@ export class SEMrushService {
         }
 
         return relatedKeywords;
+    }
+
+    // Format Response data to Keyword Table
+    private formatKeywordTableData(parsedData: KeywordData, userId: string, database?: string): KeywordTableData {
+        return {
+            user_id: userId,
+            keyword: parsedData.keyword,
+            search_volume: parsedData.searchVolume,
+            keyword_difficulty: parsedData.keywordDifficulty,
+            cpc: parsedData.cpc,
+            competition: parsedData.competition,
+            competition_level: parsedData.competitionLevel,
+            database: parsedData.database
+        };
+    }
+
+    // Format Keyword table data to Response 
+    private formatKeywordResponse(data: KeywordTableData): KeywordData {
+        return {
+            keyword: data.keyword,
+            searchVolume: data.search_volume,
+            keywordDifficulty: data.keyword_difficulty,
+            cpc: data.cpc,
+            competition:data.competition,
+            competitionLevel: data.competition_level,
+            database: data.database
+        };
     }
 }
 
