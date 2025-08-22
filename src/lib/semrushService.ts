@@ -264,7 +264,7 @@ export class SEMrushService {
                 params.domain, params.phrase
             );
             const result = await response.text();
-            
+
             return result; // SEMrush returns CSV text, not JSON
         } catch (error) {
             lastError = error instanceof Error ? error : new Error(String(error));
@@ -402,10 +402,11 @@ export class SEMrushService {
         if (database && database !== 'global') {
             params.database = database;
         }
+
         // Check cache first
         const cachedData = await cacheService.get('keywords', keyword, database);
-        if (cachedData) {
-            return this.formatKeywordResponse(cachedData)
+        if (!!cachedData?.related_keywords) {
+            return cachedData?.related_keywords;
         }
 
         const csvData = await this.makeApiRequest('phrase_related', params, userId, 'keyword_research', 'keyword_research', 1);
@@ -416,15 +417,10 @@ export class SEMrushService {
             return [];
         }
         const parsedData = this.transformRelatedKeywords(csvData, database);
-        // const cachedData = await cacheService.get('keywords', keyword, database);
-
-        // if (cachedData) {
-        //     console.log("cachedData", cachedData)
-        //     // return cachedData;
-        // }
 
         // Store in cache
-        await cacheService.set('keywords', { ...cachedData, related_keywords: parsedData }, 36);
+        await cacheService.set('keywords', { ...cachedData, keyword, database, related_keywords: parsedData }, 36);
+
         return parsedData
     }
 
@@ -595,7 +591,7 @@ export class SEMrushService {
             searchVolume: data.search_volume,
             keywordDifficulty: data.keyword_difficulty,
             cpc: data.cpc,
-            competition:data.competition,
+            competition: data.competition,
             competitionLevel: data.competition_level,
             database: data.database
         };
