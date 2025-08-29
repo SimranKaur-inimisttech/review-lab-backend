@@ -24,14 +24,14 @@ export const cacheService = {
         const expiresAt = new Date();
         expiresAt.setHours(expiresAt.getHours() + cacheTtlHours);
         const { error } = await supabaseAdmin.from(table)
-            .upsert({
-                ...data,
-                expires_at: expiresAt
-            });
-            // .upsert(
-            //     [{ ...data, expires_at: expiresAt }],
-            //     { onConflict: 'keyword,database', ignoreDuplicates: false }
-            // );
+            // .upsert({
+            //     ...data,
+            //     expires_at: expiresAt
+            // });
+            .upsert(
+                [{ ...data, expires_at: expiresAt }],
+                { onConflict: 'keyword,database', ignoreDuplicates: false }
+            );
         console.log("cache error--------------------->>>", error)
     }
 };

@@ -216,10 +216,10 @@ export class SEMrushService {
         creditsRequired: number = 1,
     ): Promise<string> {
 
-        // 2️⃣ Only check quota if cache is empty
+        // Only check quota if cache is empty
         // await this.checkQuota(userId, apiEndpoint, creditsRequired);
 
-        // 3️⃣ Make API request to SEMrush
+        // Make API request to SEMrush
         const url = new URL('/', this.baseUrl);
         url.searchParams.append('type', reportType);
         url.searchParams.append('key', this.apiKey);
@@ -325,7 +325,7 @@ export class SEMrushService {
 
         // Check cache first
         const cachedData = await cacheService.get('keywords', keyword, database);
-        if (cachedData) {
+        if (cachedData && cachedData.search_volume && cachedData.keyword_difficulty && cachedData.cpc) {
             return this.formatKeywordResponse(cachedData)
         }
 
@@ -409,13 +409,49 @@ export class SEMrushService {
             return cachedData?.related_keywords;
         }
 
-        const csvData = await this.makeApiRequest('phrase_related', params, userId, 'keyword_research', 'keyword_research', 1);
+        // const csvData = await this.makeApiRequest('phrase_related', params, userId, 'keyword_research', 'keyword_research', 1);
 
-        // check for Not found error message
-        if (csvData.includes('ERROR 50 :: NOTHING FOUND')) {
-            console.warn(`No related keywords found for "${keyword}" in "${database || 'global'}"`);
-            return [];
-        }
+        // // check for Not found error message
+        // if (csvData.includes('ERROR 50 :: NOTHING FOUND')) {
+        //     console.warn(`No related keywords found for "${keyword}" in "${database || 'global'}"`);
+        //     return [];
+        // }
+
+        // check for API LIMIT 
+        // if (csvData.includes('ERROR 132 :: API UNITS BALANCE IS ZERO')) {
+        const data = [{
+            "keyword": "Popular Keywords",
+            "searchVolume": 320,
+            "keywordDifficulty": 0,
+            "cpc": 1.67,
+            "competition": 0.01,
+            "competitionLevel": 'high',
+            "database": "us",
+            'relevance': 0
+        }, {
+            "keyword": "Popular Keywords",
+            "searchVolume": 320,
+            "keywordDifficulty": 0,
+            "cpc": 1.67,
+            "competition": 0.01,
+            "competitionLevel": 'high',
+            "database": "us",
+            'relevance': 0
+        }, {
+            "keyword": "Popular Keywords",
+            "searchVolume": 320,
+            "keywordDifficulty": 0,
+            "cpc": 1.67,
+            "competition": 0.01,
+            "competitionLevel": 'high',
+            "database": "us",
+            'relevance': 0
+        }];
+        // Store in cache
+        await cacheService.set('keywords', { ...cachedData, keyword, database, related_keywords: data }, 36);
+        return data;
+        // }
+
         const parsedData = this.transformRelatedKeywords(csvData, database);
 
         // Store in cache
