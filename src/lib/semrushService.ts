@@ -208,7 +208,7 @@ export class SEMrushService {
 
     // Make API request to SEMrush (correct format)
     private async makeApiRequest(
-        reportType: string,
+        endPoint: string,
         params: Record<string, string>,
         userId: string,
         apiEndpoint: string,
@@ -220,18 +220,26 @@ export class SEMrushService {
         // await this.checkQuota(userId, apiEndpoint, creditsRequired);
 
         // Make API request to SEMrush
-        const url = new URL('/', this.baseUrl);
-        url.searchParams.append('type', reportType);
-        url.searchParams.append('key', this.apiKey);
+        let url: URL;
+        if (endPoint.startsWith('/')) {
+            url = new URL(endPoint, this.baseUrl);
+            url.searchParams.append('key', this.apiKey);
+        } else {
+            url = new URL('/', this.baseUrl);
+            url.searchParams.append("type", endPoint);
+            url.searchParams.append('key', this.apiKey);
 
-        Object.entries(params).forEach(([key, value]) => {
-            if (value !== undefined && value !== null) {
-                url.searchParams.append(key, String(value));
-            }
-        });
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== undefined && value !== null) {
+                    url.searchParams.append(key, String(value));
+                }
+            });
+
+        }
 
         let lastError: Error = new Error("Unknown error");
-
+        console.log("url===>", url.toString())
+        return;
         // for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
         try {
 
@@ -325,7 +333,12 @@ export class SEMrushService {
 
         // Check cache first
         const cachedData = await cacheService.get('keywords', keyword, database);
-        if (cachedData && cachedData.search_volume && cachedData.keyword_difficulty && cachedData.cpc) {
+        if (
+            cachedData &&
+            cachedData.search_volume !== undefined &&
+            cachedData.keyword_difficulty !== undefined &&
+            cachedData.cpc !== undefined
+        ) {
             return this.formatKeywordResponse(cachedData)
         }
 
@@ -387,15 +400,17 @@ export class SEMrushService {
         offset: number = 0
     ): Promise<RelatedKeyword[]> {
 
+        const page = Math.floor(offset / limit) + 1; // calculate current page
+
         const params: Record<string, string> = {
             phrase: keyword,
             export_columns: 'Ph,Nq,Cp,Co,Kd,Rr',
-            export_rows: limit.toString()
+            display_limit: (limit * page).toString(),
         };
 
         // Add offset for pagination when requested (>0)
         if (offset > 0) {
-            params.export_offset = offset.toString();
+            params.display_offset = offset.toString();
         }
 
         // Add database parameter only if specified
@@ -406,58 +421,53 @@ export class SEMrushService {
         // Check cache first
         const cachedData = await cacheService.get('keywords', keyword, database);
         if (!!cachedData?.related_keywords) {
-            return cachedData?.related_keywords;
+            const cachedPageData = cachedData.related_keywords.filter((rk: any) => rk.page === page);
+            if (cachedPageData.length > 0) {
+                return cachedPageData;
+            }
         }
 
-        // const csvData = await this.makeApiRequest('phrase_related', params, userId, 'keyword_research', 'keyword_research', 1);
+        const csvData = await this.makeApiRequest('phrase_related', params, userId, 'keyword_research', 'keyword_research', 1);
 
-        // // check for Not found error message
-        // if (csvData.includes('ERROR 50 :: NOTHING FOUND')) {
-        //     console.warn(`No related keywords found for "${keyword}" in "${database || 'global'}"`);
-        //     return [];
-        // }
-
-        // check for API LIMIT 
-        // if (csvData.includes('ERROR 132 :: API UNITS BALANCE IS ZERO')) {
-        const data = [{
-            "keyword": "Popular Keywords",
-            "searchVolume": 320,
-            "keywordDifficulty": 0,
-            "cpc": 1.67,
-            "competition": 0.01,
-            "competitionLevel": 'high',
-            "database": "us",
-            'relevance': 0
-        }, {
-            "keyword": "Popular Keywords",
-            "searchVolume": 320,
-            "keywordDifficulty": 0,
-            "cpc": 1.67,
-            "competition": 0.01,
-            "competitionLevel": 'high',
-            "database": "us",
-            'relevance': 0
-        }, {
-            "keyword": "Popular Keywords",
-            "searchVolume": 320,
-            "keywordDifficulty": 0,
-            "cpc": 1.67,
-            "competition": 0.01,
-            "competitionLevel": 'high',
-            "database": "us",
-            'relevance': 0
-        }];
-        // Store in cache
-        await cacheService.set('keywords', { ...cachedData, keyword, database, related_keywords: data }, 36);
-        return data;
-        // }
+        // check for Not found error message
+        if (csvData.includes('ERROR 50 :: NOTHING FOUND')) {
+            console.warn(`No related keywords found for "${keyword}" in "${database || 'global'}"`);
+            return [];
+        }
 
         const parsedData = this.transformRelatedKeywords(csvData, database);
 
+        // Attach page to each keyword JSON
+        const relatedWithPage = parsedData.map(data => ({ ...data, page }))
         // Store in cache
-        await cacheService.set('keywords', { ...cachedData, keyword, database, related_keywords: parsedData }, 36);
+        await cacheService.set('keywords', { ...cachedData, keyword, database, related_keywords: [...(cachedData?.related_keywords || []), ...relatedWithPage] }, 36);
 
         return parsedData
+    }
+
+    // Get Website audit data specifically (uses phrase_all endpoint)
+    async getAuditData(domain: string, userId: string): Promise<KeywordData> {
+        const params: Record<string, string> = {
+            domain
+        };
+        // https://api.semrush.com/reports/v1/projects/285253/siteaudit/info?key=f515d5cad6c92048f99d357d309424d5
+        // Check cache first
+        // const cachedData = await cacheService.get('keywords', keyword, 'global');
+        // if (cachedData) {
+        //     return this.formatKeywordResponse(cachedData)
+        // }
+
+        // Use phrase_all for global data across all databases
+        const csvData = await this.makeApiRequest(`/reports/v1/projects/285253/siteaudit/info`, params, userId, 'seo_audits', 'siteaudit', 1);
+
+        // const parsedData = this.transformGlobalKeywordData(csvData);
+
+        // const tableData = this.formatKeywordTableData(parsedData, userId)
+
+        // // Store in cache
+        // await cacheService.set('keywords', tableData, 36);
+        // return parsedData;
+        return csvData;
     }
 
     // Transform domain overview response (CSV format)

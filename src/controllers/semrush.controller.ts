@@ -7,7 +7,7 @@ import { ParsedQs } from "qs";
 
 interface KeywordQuery extends ParsedQs {
     keyword: string;
-    database?: string;
+    database: string;
     limit?: string;
     offset?: string;
 }
@@ -78,4 +78,14 @@ export const getCountryKeywordAnalysis = asyncHandler(async (req: Request, res: 
     );
 
     res.status(200).json(new ApiResponse(200, data, "Country Keyword Data fetched successfully"));
+});
+
+export const getWebsiteAuditdAnalysis = asyncHandler(async (req: Request, res: Response) => {
+    const { domain } = req.params;
+
+    const userId = req.user!.id;
+
+    const data = await semrushService.getAuditData(domain, userId);
+
+    res.status(200).json(new ApiResponse(200, data, "Global Keyword Data fetched successfully"));
 });
