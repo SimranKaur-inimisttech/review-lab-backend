@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/config/supabaseAdmin';
 import { cacheService } from './cacheService';
+import axios, { AxiosResponse } from 'axios';
 
 // =============================================================================
 // SIMPLIFIED SEMRUSH API SERVICE - FUNCTIONAL VERSION
@@ -214,19 +215,18 @@ export class SEMrushService {
         apiEndpoint: string,
         requestType: string,
         creditsRequired: number = 1,
-    ): Promise<string> {
-
+        method: 'GET' | 'POST' = 'GET'
+    ): Promise<any> {
         // Only check quota if cache is empty
         // await this.checkQuota(userId, apiEndpoint, creditsRequired);
 
-        // Make API request to SEMrush
         let url: URL;
         if (endPoint.startsWith('/')) {
             url = new URL(endPoint, this.baseUrl);
             url.searchParams.append('key', this.apiKey);
         } else {
             url = new URL('/', this.baseUrl);
-            url.searchParams.append("type", endPoint);
+            url.searchParams.append('type', endPoint);
             url.searchParams.append('key', this.apiKey);
 
             Object.entries(params).forEach(([key, value]) => {
@@ -234,69 +234,69 @@ export class SEMrushService {
                     url.searchParams.append(key, String(value));
                 }
             });
-
         }
 
-        let lastError: Error = new Error("Unknown error");
-        console.log("url===>", url.toString())
-        return;
+        let lastError: Error = new Error('Unknown error');
+
         // for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
         try {
+            let response: AxiosResponse;
 
-            const response = await fetch(url.toString());
-
-            if (!response.ok) {
-                if (response.status === 429) {
-                    const retryAfter = parseInt(response.headers.get('Retry-After') || '60');
-                    await this.logUsage(
-                        userId, apiEndpoint, requestType, 'rate_limited', 0,
-                        params.domain, params.phrase, `Rate limited, retry after ${retryAfter}s`
-                    );
-                    throw new RateLimitError(`Rate limited by SEMrush API`, retryAfter);
-                }
-                if (response.status === 402) {
-                    await this.logUsage(
-                        userId, apiEndpoint, requestType, 'quota_exceeded', 0,
-                        params.domain, params.phrase, 'SEMrush API quota exceeded'
-                    );
-                    throw new QuotaExceededError('SEMrush API quota exceeded', apiEndpoint);
-                }
-                throw new SEMrushError(
-                    `SEMrush API error: ${response.status} ${response.statusText}`,
-                    response.status
-                );
+            if (method === 'POST') {
+                response = await axios.post(url.toString());
+            } else {
+                response = await axios.get(url.toString());
             }
-            // Log successful API usage
+
+            // Success logging
             await this.logUsage(
                 userId, apiEndpoint, requestType, 'success', creditsRequired,
                 params.domain, params.phrase
             );
-            const result = await response.text();
 
-            return result; // SEMrush returns CSV text, not JSON
-        } catch (error) {
-            lastError = error instanceof Error ? error : new Error(String(error));
+            return response.data;
+        } catch (error: any) {
+            if (axios.isAxiosError(error) && error.response) {
+                const status = error.response.status;
 
-            if (error instanceof RateLimitError || error instanceof QuotaExceededError) {
-                throw error;
+                if (status === 429) {
+                    const retryAfter = parseInt(error.response.headers['retry-after'] || '60', 10);
+                    await this.logUsage(
+                        userId, apiEndpoint, requestType, 'rate_limited', 0, params.domain, params.phrase, `Rate limited, retry after ${retryAfter}s`
+                    );
+                    throw new RateLimitError('Rate limited by SEMrush API', retryAfter);
+                }
+
+                if (status === 402) {
+                    await this.logUsage(
+                        userId, apiEndpoint, requestType, 'quota_exceeded', 0, params.domain, params.phrase, 'SEMrush API quota exceeded'
+                    );
+                    throw new QuotaExceededError('SEMrush API quota exceeded', apiEndpoint);
+                }
+
+                lastError = new SEMrushError(
+                    `SEMrush API error: ${status} ${error.response.statusText}`, status
+                );
+            } else {
+                lastError = error instanceof Error ? error : new Error(String(error));
             }
 
             // if (attempt < this.maxRetries) {
-            //     await new Promise(resolve => setTimeout(resolve, this.retryDelay * (attempt + 1)));
+            //     const delay = this.retryDelay * (attempt + 1);
+            //     await new Promise((resolve) => setTimeout(resolve, delay));
+            //     continue;
             // }
         }
         // }
-        // Log failed API call
+
+        // Log failed API call after retries
         await this.logUsage(
-            userId, apiEndpoint, requestType, 'failed', 0,
-            params.domain, params.phrase, lastError.message
-        );
+            userId, apiEndpoint, requestType, 'failed', 0, params.domain, params.phrase, lastError.message);
 
         throw new SEMrushError(
-            `Failed to make request after ${this.maxRetries + 1} attempts: ${lastError.message}`,
-            undefined,
-            apiEndpoint,
-            lastError
+            `Failed to make request after ${this.maxRetries + 1
+            } attempts: ${lastError.message}`,
+            undefined, apiEndpoint, lastError
         );
     }
 
@@ -445,30 +445,111 @@ export class SEMrushService {
         return parsedData
     }
 
-    // Get Website audit data specifically (uses phrase_all endpoint)
-    async getAuditData(domain: string, userId: string): Promise<KeywordData> {
+    // Get project info for domain audit data
+    async getProjectInfo(domain: string, userId: string): Promise<string> {
+        const projects = await this.makeApiRequest(`/management/v1/projects`, {}, userId, 'projects', 'siteaudit', 1);
+
+        const project = projects.find((p: any) => p.url === domain);
+        return project.project_id;
+    }
+
+    private getGrade(score: number): string {
+        console.log("score===>", score);
+        if (score >= 90) return "A+";
+        if (score >= 80) return "A";
+        if (score >= 70) return "B";
+        if (score >= 60) return "C";
+        if (score >= 50) return "D";
+        return "F";
+    }
+
+    private getScoreBreakdown(thematic: any) {
+        return [
+            { name: "On-Page SEO", value: thematic.intSeo?.value ?? 0, grade: this.getGrade(thematic.intSeo?.value || 0) },
+            { name: "Links", value: thematic.linking?.value ?? 0, grade: this.getGrade(thematic.linking?.value || 0) },
+            { name: "Usability", value: thematic.crawlability?.value ?? 0, grade: this.getGrade(thematic.crawlability?.value || 0) },
+            { name: "Performance", value: thematic.performance?.value ?? 0, grade: this.getGrade(thematic.performance?.value) },
+            { name: "Social", value: thematic.social?.value ?? 0, grade: this.getGrade(thematic.social?.value || 0) }
+        ]
+    }
+
+    // Get Website audit data specifically
+    async getAuditData(domain: string, userId: string): Promise<any> {
         const params: Record<string, string> = {
             domain
         };
-        // https://api.semrush.com/reports/v1/projects/285253/siteaudit/info?key=f515d5cad6c92048f99d357d309424d5
+
+        const project_id = await this.getProjectInfo(domain, userId);
+
         // Check cache first
         // const cachedData = await cacheService.get('keywords', keyword, 'global');
         // if (cachedData) {
         //     return this.formatKeywordResponse(cachedData)
         // }
 
-        // Use phrase_all for global data across all databases
-        const csvData = await this.makeApiRequest(`/reports/v1/projects/285253/siteaudit/info`, params, userId, 'seo_audits', 'siteaudit', 1);
+        const siteAuditData = await this.makeApiRequest(`/reports/v1/projects/${project_id}/siteaudit/info`, params, userId, 'seo_audits', 'siteaudit', 1);
 
-        // const parsedData = this.transformGlobalKeywordData(csvData);
+        const qualityScore = siteAuditData.current_snapshot.quality?.value ?? 0;
+        const qualityGrade = this.getGrade(qualityScore);
+        const scoreBreakdown = this.getScoreBreakdown(siteAuditData?.current_snapshot?.thematicScores || {});
 
-        // const tableData = this.formatKeywordTableData(parsedData, userId)
+        return {
+            domain,
+            date: new Date().toLocaleDateString(),
+            overallGrade: qualityGrade,
+            scores: scoreBreakdown,
+            recommendations: 23,
+            onPageIssues: [
+                {
+                    issue: "Include a meta description tag",
+                    category: "On-Page SEO",
+                    priority: "High",
+                    solution: "Add a meta description tag to your HTML that summarizes page content in 150-160 characters."
+                },
+                {
+                    issue: "Add a favicon",
+                    category: "Usability",
+                    priority: "Low",
+                    solution: "Create and add a favicon to improve brand recognition and user experience."
+                }
+            ],
+            titleTag: {
+                text: "Example Domain",
+                length: 14,
+                status: "error"
+            },
+            metaDescription: {
+                status: "error",
+                message: "Your page appears to be missing a meta description tag."
+            },
+            headerTags: {
+                h1: { count: 1, status: "success" },
+                h2: { count: 0, status: "error" },
+                h3: { count: 0, status: "error" },
+                h4: { count: 0, status: "error" },
+                h5: { count: 0, status: "error" },
+                h6: { count: 0, status: "error" }
+            },
+            performance: {
+                grade: "A",
+                pageContentLoaded: "0.1s",
+                downloadSize: "0.0MB"
+            },
+            usability: {
+                grade: "A+",
+                viewport: true,
+                tapTargets: true
+            }
+        }
+            // const parsedData = this.transformGlobalKeywordData(csv Data);
 
-        // // Store in cache
-        // await cacheService.set('keywords', tableData, 36);
-        // return parsedData;
-        return csvData;
-    }
+            // const tableData = this.formatKeywordTableData(parsedData, userId)
+
+            // // Store in cache
+            // await cacheService.set('keywords', tableData, 36);
+            // return parsedData;
+            // return csvData;
+        }
 
     // Transform domain overview response (CSV format)
     private transformDomainOverview(csvData: string): DomainOverview {
