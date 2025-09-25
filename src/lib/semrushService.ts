@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/config/supabaseAdmin';
 import { cacheService } from './cacheService';
 import axios, { AxiosResponse } from 'axios';
+import { capitalizeFirst } from '@/utils/helpers';
 
 // =============================================================================
 // SIMPLIFIED SEMRUSH API SERVICE - FUNCTIONAL VERSION
@@ -445,6 +446,31 @@ export class SEMrushService {
         return parsedData
     }
 
+    // Get backlink analytics data (using domain backlinks overview as example)
+    async getBacklinkData(keyword: string, userId: string): Promise<KeywordData> {
+        const params: Record<string, string> = {
+            phrase: keyword,
+            export_columns: 'Db,Ph,Nq,Cp,Co,Kd'
+        };
+
+        // Check cache first
+        const cachedData = await cacheService.get('keywords', keyword, 'global');
+        if (cachedData) {
+            return this.formatKeywordResponse(cachedData)
+        }
+
+        // Use phrase_all for global data across all databases
+        const csvData = await this.makeApiRequest('phrase_all', params, userId, 'keyword_research', 'keyword_research', 1);
+
+        const parsedData = this.transformGlobalKeywordData(csvData);
+
+        const tableData = this.formatKeywordTableData(parsedData, userId)
+
+        // Store in cache
+        await cacheService.set('keywords', tableData, 36);
+        return parsedData;
+    }
+
     // Get project info for domain audit data
     async getProjectInfo(domain: string, userId: string): Promise<string> {
         const projects = await this.makeApiRequest(`/management/v1/projects`, {}, userId, 'projects', 'siteaudit', 1);
@@ -454,7 +480,6 @@ export class SEMrushService {
     }
 
     private getGrade(score: number): string {
-        console.log("score===>", score);
         if (score >= 90) return "A+";
         if (score >= 80) return "A";
         if (score >= 70) return "B";
@@ -463,15 +488,17 @@ export class SEMrushService {
         return "F";
     }
 
-    private getScoreBreakdown(thematic: any) {
-        return [
-            { name: "On-Page SEO", value: thematic.intSeo?.value ?? 0, grade: this.getGrade(thematic.intSeo?.value || 0) },
-            { name: "Links", value: thematic.linking?.value ?? 0, grade: this.getGrade(thematic.linking?.value || 0) },
-            { name: "Usability", value: thematic.crawlability?.value ?? 0, grade: this.getGrade(thematic.crawlability?.value || 0) },
-            { name: "Performance", value: thematic.performance?.value ?? 0, grade: this.getGrade(thematic.performance?.value) },
-            { name: "Social", value: thematic.social?.value ?? 0, grade: this.getGrade(thematic.social?.value || 0) }
-        ]
-    }
+    private getScoreBreakdown(thematic: Record<string, any>) {
+        return Object.entries(thematic).map(([key, obj]) => {
+            const value = obj?.value ?? 0;
+            return {
+                name: capitalizeFirst(key),
+                value,
+                grade: this.getGrade(value),
+            };
+        });
+    };
+
 
     // Get Website audit data specifically
     async getAuditData(domain: string, userId: string): Promise<any> {
@@ -492,13 +519,14 @@ export class SEMrushService {
         const qualityScore = siteAuditData.current_snapshot.quality?.value ?? 0;
         const qualityGrade = this.getGrade(qualityScore);
         const scoreBreakdown = this.getScoreBreakdown(siteAuditData?.current_snapshot?.thematicScores || {});
+        const totalRecommendations = (siteAuditData.errors ?? 0) + (siteAuditData.warnings ?? 0) + (siteAuditData.notices ?? 0);
 
         return {
             domain,
             date: new Date().toLocaleDateString(),
-            overallGrade: qualityGrade,
+            overallScore: { grade: qualityGrade, value: qualityScore },
             scores: scoreBreakdown,
-            recommendations: 23,
+            recommendations: totalRecommendations,
             onPageIssues: [
                 {
                     issue: "Include a meta description tag",
@@ -541,15 +569,15 @@ export class SEMrushService {
                 tapTargets: true
             }
         }
-            // const parsedData = this.transformGlobalKeywordData(csv Data);
+        // const parsedData = this.transformGlobalKeywordData(csv Data);
 
-            // const tableData = this.formatKeywordTableData(parsedData, userId)
+        // const tableData = this.formatKeywordTableData(parsedData, userId)
 
-            // // Store in cache
-            // await cacheService.set('keywords', tableData, 36);
-            // return parsedData;
-            // return csvData;
-        }
+        // // Store in cache
+        // await cacheService.set('keywords', tableData, 36);
+        // return parsedData;
+        // return csvData;
+    }
 
     // Transform domain overview response (CSV format)
     private transformDomainOverview(csvData: string): DomainOverview {
