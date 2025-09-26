@@ -36,6 +36,16 @@ export interface RelatedKeyword {
     relevance: number;
     database?: string;
 }
+export interface BacklinkOverview {
+    totalBacklinks: number;
+    totalReferringDomains: number;
+    doFollowLinks: number;
+    noFollowLinks: number;
+    averageDomainAuthority: number;
+    toxicityScore: number;
+    newBacklinks: number;
+    lostBacklinks: number;
+}
 
 export interface KeywordTableData {
     user_id: string;
@@ -221,28 +231,20 @@ export class SEMrushService {
         // Only check quota if cache is empty
         // await this.checkQuota(userId, apiEndpoint, creditsRequired);
 
-        let url: URL;
-        if (endPoint.startsWith('/')) {
-            url = new URL(endPoint, this.baseUrl);
-            url.searchParams.append('key', this.apiKey);
-        } else {
-            url = new URL('/', this.baseUrl);
-            url.searchParams.append('type', endPoint);
-            url.searchParams.append('key', this.apiKey);
-
-            Object.entries(params).forEach(([key, value]) => {
-                if (value !== undefined && value !== null) {
-                    url.searchParams.append(key, String(value));
-                }
-            });
-        }
+        const url = new URL(endPoint, this.baseUrl);
+        url.searchParams.append('key', this.apiKey);
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && key !== 'domain') {
+                url.searchParams.append(key, String(value));
+            }
+        });
 
         let lastError: Error = new Error('Unknown error');
 
         // for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
         try {
             let response: AxiosResponse;
-
+            console.log('semrush request ====>', url.toString());
             if (method === 'POST') {
                 response = await axios.post(url.toString());
             } else {
@@ -323,6 +325,7 @@ export class SEMrushService {
     async getKeywordData(keyword: string, userId: string, database: string): Promise<KeywordData> {
 
         const params: Record<string, string> = {
+            type: 'phrase_this',
             phrase: keyword,
             export_columns: 'Ph,Nq,Cp,Co,Kd'
         };
@@ -343,7 +346,7 @@ export class SEMrushService {
             return this.formatKeywordResponse(cachedData)
         }
 
-        const csvData = await this.makeApiRequest('phrase_this', params, userId, 'keyword_research', 'keyword_overview', 1);
+        const csvData = await this.makeApiRequest('', params, userId, 'keyword_research', 'keyword_overview', 1);
 
         const parsedData = this.transformKeywordData(csvData, database);
 
@@ -357,6 +360,7 @@ export class SEMrushService {
     // Get global keyword data specifically (uses phrase_all endpoint)
     async getGlobalKeywordData(keyword: string, userId: string): Promise<KeywordData> {
         const params: Record<string, string> = {
+            type: 'phrase_all',
             phrase: keyword,
             export_columns: 'Db,Ph,Nq,Cp,Co,Kd'
         };
@@ -368,7 +372,7 @@ export class SEMrushService {
         }
 
         // Use phrase_all for global data across all databases
-        const csvData = await this.makeApiRequest('phrase_all', params, userId, 'keyword_research', 'keyword_research', 1);
+        const csvData = await this.makeApiRequest('', params, userId, 'keyword_research', 'keyword_research', 1);
 
         const parsedData = this.transformGlobalKeywordData(csvData);
 
@@ -386,12 +390,6 @@ export class SEMrushService {
 
     /**
      * Fetch related keywords / keyword variations from SEMrush with pagination support.
-     *
-     * @param keyword       Main keyword to search variations for
-     * @param userId        Current authenticated user ID (for quota logging)
-     * @param database      SEMrush DB (e.g. "us"), omit or "global" for global
-     * @param limit         Rows to return (1–100). Default 20.
-     * @param offset        Zero-based row offset for pagination. Default 0.
      */
     async getRelatedKeywords(
         keyword: string,
@@ -404,6 +402,7 @@ export class SEMrushService {
         const page = Math.floor(offset / limit) + 1; // calculate current page
 
         const params: Record<string, string> = {
+            type: 'phrase_related',
             phrase: keyword,
             export_columns: 'Ph,Nq,Cp,Co,Kd,Rr',
             display_limit: (limit * page).toString(),
@@ -428,7 +427,7 @@ export class SEMrushService {
             }
         }
 
-        const csvData = await this.makeApiRequest('phrase_related', params, userId, 'keyword_research', 'keyword_research', 1);
+        const csvData = await this.makeApiRequest('', params, userId, 'keyword_research', 'keyword_research', 1);
 
         // check for Not found error message
         if (csvData.includes('ERROR 50 :: NOTHING FOUND')) {
@@ -447,30 +446,80 @@ export class SEMrushService {
     }
 
     // Get backlink analytics data (using domain backlinks overview as example)
-    async getBacklinkData(keyword: string, userId: string): Promise<KeywordData> {
+    async getBacklinkOverview(domain: string, userId: string): Promise<any> {
         const params: Record<string, string> = {
-            phrase: keyword,
-            export_columns: 'Db,Ph,Nq,Cp,Co,Kd'
+            type: 'backlinks_overview',
+            target: domain,
+            target_type: 'root_domain',
+            export_columns: 'ascore,total,domains_num,urls_num,follows_num,nofollows_num'
         };
 
-        // Check cache first
-        const cachedData = await cacheService.get('keywords', keyword, 'global');
-        if (cachedData) {
-            return this.formatKeywordResponse(cachedData)
+        return {
+            totalBacklinks: 12345,
+            totalReferringDomains: 678,
+            doFollowLinks: 91011,
+            noFollowLinks: 1213,
+            averageDomainAuthority: 45,
+            toxicityScore: 0,
+            newBacklinks: 0,
+            lostBacklinks: 0
         }
+        // Check cache first
+        // const cachedData = await cacheService.get('keywords', keyword, 'global');
+        // if (cachedData) {
+        //     return this.formatKeywordResponse(cachedData)
+        // }
 
-        // Use phrase_all for global data across all databases
-        const csvData = await this.makeApiRequest('phrase_all', params, userId, 'keyword_research', 'keyword_research', 1);
+        const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'Backlink_analysis', 'Backlinks_overview', 1);
+        console.log('backlinkData ====>', csvData);
 
-        const parsedData = this.transformGlobalKeywordData(csvData);
+        const parsedData = this.transformBacklinkOverview(csvData);
 
-        const tableData = this.formatKeywordTableData(parsedData, userId)
+        // const tableData = this.formatKeywordTableData(parsedData, userId)
 
-        // Store in cache
-        await cacheService.set('keywords', tableData, 36);
+        // // Store in cache
+        // await cacheService.set('keywords', tableData, 36);
         return parsedData;
+        // return csvData;
     }
 
+    // Get backlink competitor data
+    async getBacklinkCometitorsData(domain: string, userId: string): Promise<any> {
+        const params: Record<string, string> = {
+            type: 'backlinks_competitors',
+            target: domain,
+            target_type: 'root_domain',
+            export_columns: 'score, neighbour, domains_num, backlinks_num'
+        };
+
+        return {
+            totalBacklinks: 12345,
+            totalReferringDomains: 678,
+            doFollowLinks: 91011,
+            noFollowLinks: 1213,
+            averageDomainAuthority: 45,
+            toxicityScore: 0,
+            newBacklinks: 0,
+            lostBacklinks: 0
+        }
+        // Check cache first
+        // const cachedData = await cacheService.get('keywords', keyword, 'global');
+        // if (cachedData) {
+        //     return this.formatKeywordResponse(cachedData)
+        // }
+
+        const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'Backlink_analysis', 'Backlinks_overview', 1);
+        console.log('backlinkData ====>', csvData);
+
+        const parsedData = this.transformBacklinkOverview(csvData);
+
+        // const tableData = this.formatKeywordTableData(parsedData, userId)
+
+        // // Store in cache
+        // await cacheService.set('keywords', tableData, 36);
+        return parsedData;
+        // return csvData;
+    }
     // Get project info for domain audit data
     async getProjectInfo(domain: string, userId: string): Promise<string> {
         const projects = await this.makeApiRequest(`/management/v1/projects`, {}, userId, 'projects', 'siteaudit', 1);
@@ -634,6 +683,62 @@ export class SEMrushService {
             competition,
             competitionLevel,
             database: database || 'global',
+        };
+    }
+
+    // Transform backlink overview data response (CSV format)
+    private transformBacklinkOverview(csvData: string): BacklinkOverview {
+        const lines = csvData.trim().split('\n');
+        if (lines.length < 2) {
+            throw new SEMrushError('Invalid CSV response from SEMrush');
+        }
+
+        const headers = lines[0].split(';');
+        const values = lines[1].split(';');
+
+        // Create object from CSV data
+        const row: Record<string, string> = {};
+        headers.forEach((header, index) => {
+            row[header] = values[index] || '';
+        });
+
+        return {
+            totalBacklinks: parseInt(row['total'] || '0'),
+            totalReferringDomains: parseInt(row['domains_num'] || '0'),
+            doFollowLinks: parseInt(row['follows_num'] || '0'),
+            noFollowLinks: parseInt(row['nofollows_num'] || '0'),
+            averageDomainAuthority: parseInt(row['ascore'] || '0'),
+            toxicityScore: 0,
+            newBacklinks: 0,
+            lostBacklinks: 0
+        };
+    }
+
+     // Transform backlink competitor data response (CSV format)
+    private transformBacklinkCometitorsData(csvData: string): BacklinkOverview {
+        const lines = csvData.trim().split('\n');
+        if (lines.length < 2) {
+            throw new SEMrushError('Invalid CSV response from SEMrush');
+        }
+
+        const headers = lines[0].split(';');
+        const values = lines[1].split(';');
+
+        // Create object from CSV data
+        const row: Record<string, string> = {};
+        headers.forEach((header, index) => {
+            row[header] = values[index] || '';
+        });
+
+        return {
+            totalBacklinks: parseInt(row['total'] || '0'),
+            totalReferringDomains: parseInt(row['domains_num'] || '0'),
+            doFollowLinks: parseInt(row['follows_num'] || '0'),
+            noFollowLinks: parseInt(row['nofollows_num'] || '0'),
+            averageDomainAuthority: parseInt(row['ascore'] || '0'),
+            toxicityScore: 0,
+            newBacklinks: 0,
+            lostBacklinks: 0
         };
     }
 
