@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/config/supabaseAdmin';
 import { cacheService } from './cacheService';
 import axios, { AxiosResponse } from 'axios';
-import { capitalizeFirst } from '@/utils/helpers';
+import { capitalizeFirst, formatDate } from '@/utils/helpers';
 
 // =============================================================================
 // SIMPLIFIED SEMRUSH API SERVICE - FUNCTIONAL VERSION
@@ -45,6 +45,28 @@ export interface BacklinkOverview {
     toxicityScore: number;
     newBacklinks: number;
     lostBacklinks: number;
+}
+
+export interface BacklinkCometitorData {
+    domain: string,
+    totalBacklinks: number;
+    totalReferringDomains: number;
+    similarity: number;
+    commonRefdomains: number;
+    averageDomainAuthority: number;
+}
+export interface Backlink {
+    sourceDomain: string;
+    sourceUrl: string;
+    targetUrl: string;
+    anchorText: string;
+    doFollow: boolean;
+    domainAuthority: number;
+    pageAuthority: number;
+    firstSeen: string;
+    lastSeen: string;
+    status: 'broken' | 'new' | 'lost' | 'active';
+    type: 'form' | 'frame' | 'image' | 'nofollow' | 'dofollow' | 'sitewide' | 'text';
 }
 
 export interface KeywordTableData {
@@ -453,17 +475,24 @@ export class SEMrushService {
             target_type: 'root_domain',
             export_columns: 'ascore,total,domains_num,urls_num,follows_num,nofollows_num'
         };
+        const competitorsBacklinkData = await this.getBacklinkCompetitorsData(domain, userId);
+        const backlinks = await this.getBacklinks(domain, userId);
 
         return {
-            totalBacklinks: 12345,
-            totalReferringDomains: 678,
-            doFollowLinks: 91011,
-            noFollowLinks: 1213,
-            averageDomainAuthority: 45,
-            toxicityScore: 0,
-            newBacklinks: 0,
-            lostBacklinks: 0
+            profile: {
+                totalBacklinks: 12345,
+                totalReferringDomains: 678,
+                doFollowLinks: 91011,
+                noFollowLinks: 1213,
+                averageDomainAuthority: 45,
+                toxicityScore: 0,
+                newBacklinks: 0,
+                lostBacklinks: 0
+            },
+            competitorsBacklinkData,
+            backlinks
         }
+
         // Check cache first
         // const cachedData = await cacheService.get('keywords', keyword, 'global');
         // if (cachedData) {
@@ -484,34 +513,52 @@ export class SEMrushService {
     }
 
     // Get backlink competitor data
-    async getBacklinkCometitorsData(domain: string, userId: string): Promise<any> {
+    async getBacklinkCompetitorsData(domain: string, userId: string, limit: number = 3,
+        offset: number = 0): Promise<any> {
         const params: Record<string, string> = {
             type: 'backlinks_competitors',
             target: domain,
             target_type: 'root_domain',
-            export_columns: 'score, neighbour, domains_num, backlinks_num'
+            export_columns: 'ascore,neighbour,similarity,common_refdomains,domains_num,backlinks_num',
+            display_limit: limit.toString(),
+            display_offset: offset.toString()
         };
 
-        return {
-            totalBacklinks: 12345,
-            totalReferringDomains: 678,
-            doFollowLinks: 91011,
-            noFollowLinks: 1213,
-            averageDomainAuthority: 45,
-            toxicityScore: 0,
-            newBacklinks: 0,
-            lostBacklinks: 0
-        }
+        return [
+            {
+                "domain": "bedpage.com",
+                "totalBacklinks": 22639363,
+                "totalReferringDomains": 27910,
+                "similarity": 0.14346,
+                "commonRefdomains": 1787,
+                "averageDomainAuthority": 66
+            },
+            {
+                "domain": "mydomain.com",
+                "totalBacklinks": 1324082,
+                "totalReferringDomains": 12097,
+                "similarity": 0.123944,
+                "commonRefdomains": 1554,
+                "averageDomainAuthority": 35
+            },
+            {
+                "domain": "domainname.com",
+                "totalBacklinks": 43170,
+                "totalReferringDomains": 6224,
+                "similarity": 0.084323,
+                "commonRefdomains": 967,
+                "averageDomainAuthority": 31
+            }
+        ]
         // Check cache first
         // const cachedData = await cacheService.get('keywords', keyword, 'global');
         // if (cachedData) {
         //     return this.formatKeywordResponse(cachedData)
         // }
 
-        const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'Backlink_analysis', 'Backlinks_overview', 1);
-        console.log('backlinkData ====>', csvData);
+        const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'Backlink_analysis', 'Backlinks_competitor', 1);
 
-        const parsedData = this.transformBacklinkOverview(csvData);
+        const parsedData = this.transformBacklinkCometitorsData(csvData);
 
         // const tableData = this.formatKeywordTableData(parsedData, userId)
 
@@ -520,6 +567,88 @@ export class SEMrushService {
         return parsedData;
         // return csvData;
     }
+
+    // Get backlink analytics data (using domain backlinks overview as example)
+    async getBacklinks(domain: string, userId: string, limit: number = 2,
+        offset: number = 0): Promise<any> {
+        const params: Record<string, string> = {
+            type: 'backlinks',
+            target: domain,
+            target_type: 'root_domain',
+            export_columns: 'source_url,target_url,anchor,nofollow,page_ascore,first_seen,last_seen,response_code,newlink,lostlink,form,frame,image,sitewide',
+            display_limit: limit.toString(),
+            display_offset: offset.toString()
+        };
+
+        // return [
+        //     {
+        //         "sourceDomain": "rule34.dev",
+        //         "sourceUrl": "https://rule34.dev/video",
+        //         "targetUrl": "https://yourdomain.com/video",
+        //         "anchorText": "",
+        //         "doFollow": false,
+        //         "domainAuthority": 0,
+        //         "pageAuthority": 88,
+        //         "firstSeen": "1748797597",
+        //         "lastSeen": "1753673475\r"
+        //     },
+        //     {
+        //         "sourceDomain": "github.com",
+        //         "sourceUrl": "https://github.com/Schepp/CSS-Filters-Polyfill",
+        //         "targetUrl": "http://www.yourdomain.com/",
+        //         "anchorText": "www.yourdomain.com",
+        //         "doFollow": false,
+        //         "domainAuthority": 0,
+        //         "pageAuthority": 85,
+        //         "firstSeen": "1750515079",
+        //         "lastSeen": "1750515079\r"
+        //     },
+        //     {
+        //         "sourceDomain": "stacks-on-stacks.com",
+        //         "sourceUrl": "https://stacks-on-stacks.com/disc-golf-flight-chart-playground",
+        //         "targetUrl": "https://yourdomain.com/flight-chart-playground",
+        //         "anchorText": "",
+        //         "doFollow": false,
+        //         "domainAuthority": 0,
+        //         "pageAuthority": 83,
+        //         "firstSeen": "1758177750",
+        //         "lastSeen": "1758177750\r"
+        //     },
+        //     {
+        //         "sourceDomain": "replmarket.com",
+        //         "sourceUrl": "https://replmarket.com/shop/list.php?ca_id=001&page_rows&sort=index_no&sortodr=desc",
+        //         "targetUrl": "https://www.yourdomain.com/",
+        //         "anchorText": "",
+        //         "doFollow": false,
+        //         "domainAuthority": 0,
+        //         "pageAuthority": 82,
+        //         "firstSeen": "1758026925",
+        //         "lastSeen": "1758702806\r"
+        //     },
+        //     {
+        //         "sourceDomain": "replmarket.com",
+        //         "sourceUrl": "https://replmarket.com/shop/list.php?ca_id=011&page_rows&sort=index_no&sortodr=desc",
+        //         "targetUrl": "https://www.yourdomain.com/",
+        //         "anchorText": "",
+        //         "doFollow": false,
+        //         "domainAuthority": 0,
+        //         "pageAuthority": 82,
+        //         "firstSeen": "1757505956",
+        //         "lastSeen": "1758932740"
+        //     }
+        // ]
+
+        // const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'Backlink_analysis', 'Backlinks', 1);
+        const csvData = `
+        source_url;target_url;anchor;nofollow;page_ascore;first_seen;last_seen;response_code;newlink;lostlink;form;frame;image;sitewide
+        https://rule34.dev/video;https://yourdomain.com/video;;false;88;1748797597;1753673475;301;false;true;false;false;false;false
+        https://github.com/Schepp/CSS-Filters-Polyfill;http://www.yourdomain.com/;www.yourdomain.com;true;85;1750515079;1750515079;200;false;false;false;false;false;false`;
+        console.log('backlinkData ====>', csvData);
+        const parsedData = this.transformBacklinksData(csvData);
+        return parsedData;
+
+    }
+
     // Get project info for domain audit data
     async getProjectInfo(domain: string, userId: string): Promise<string> {
         const projects = await this.makeApiRequest(`/management/v1/projects`, {}, userId, 'projects', 'siteaudit', 1);
@@ -714,32 +843,102 @@ export class SEMrushService {
         };
     }
 
-     // Transform backlink competitor data response (CSV format)
-    private transformBacklinkCometitorsData(csvData: string): BacklinkOverview {
+    private isTrue(val?: string): boolean {
+        return val?.toLowerCase() === 'true';
+    }
+    // Transform backlinks data response (CSV format)
+    private transformBacklinksData(csvData: string): Backlink[] {
         const lines = csvData.trim().split('\n');
         if (lines.length < 2) {
             throw new SEMrushError('Invalid CSV response from SEMrush');
         }
 
-        const headers = lines[0].split(';');
-        const values = lines[1].split(';');
+        const backlinks: Backlink[] = [];
 
-        // Create object from CSV data
-        const row: Record<string, string> = {};
-        headers.forEach((header, index) => {
-            row[header] = values[index] || '';
-        });
+        // Process all backlink entries (skip header)
+        for (let i = 1; i < lines.length; i++) {
+            const parts = lines[i].split(';');
+            if (parts.length >= 10) {
+                const sourceUrl = parts[0] || '';
+                let sourceDomain = '';
+                if (sourceUrl) {
+                    try {
+                        const url = new URL(sourceUrl);
+                        sourceDomain = url.hostname.replace(/^www\./, '');
+                    } catch {
+                        sourceDomain = '';
+                    }
+                }
 
-        return {
-            totalBacklinks: parseInt(row['total'] || '0'),
-            totalReferringDomains: parseInt(row['domains_num'] || '0'),
-            doFollowLinks: parseInt(row['follows_num'] || '0'),
-            noFollowLinks: parseInt(row['nofollows_num'] || '0'),
-            averageDomainAuthority: parseInt(row['ascore'] || '0'),
-            toxicityScore: 0,
-            newBacklinks: 0,
-            lostBacklinks: 0
-        };
+                let status: 'broken' | 'new' | 'lost' | 'active' = 'active';
+                if (parts[7] > '399') {
+                    status = 'broken';
+                } else if (this.isTrue(parts[8])) {
+                    status = 'new';
+                } else if (this.isTrue(parts[9])) {
+                    status = 'lost';
+                }
+                // Detect backlink type
+                let type: 'form' | 'frame' | 'image' | 'sitewide' | 'nofollow' | 'dofollow' | 'text' = 'text';
+                if (this.isTrue(parts[3])) {
+                    type = 'nofollow';
+                } else if (this.isTrue(parts[3])) {
+                    type = 'dofollow';
+                } else if (this.isTrue(parts[10])) {
+                    type = 'form';
+                } else if (this.isTrue(parts[11])) {
+                    type = 'frame';
+                } else if (this.isTrue(parts[12])) {
+                    type = 'image';
+                } else if (this.isTrue(parts[13])) {
+                    type = 'sitewide';
+                }
+
+                backlinks.push({
+                    sourceDomain,
+                    sourceUrl,
+                    targetUrl: parts[1] || '',
+                    anchorText: parts[2] || '',
+                    doFollow: !this.isTrue(parts[3]),
+                    domainAuthority: 0,
+                    pageAuthority: parseInt(parts[4] || '0', 10),
+                    firstSeen: formatDate(parts[5]),
+                    lastSeen: formatDate(parts[6]),
+                    status,
+                    type
+                });
+            }
+        }
+        return backlinks;
+    }
+
+    // Transform backlink competitor data response (CSV format)
+    private transformBacklinkCometitorsData(csvData: string): BacklinkCometitorData[] {
+        const lines = csvData.trim().split('\n');
+        if (lines.length < 2) {
+            throw new SEMrushError('Invalid CSV response from SEMrush');
+        }
+
+        const backlinkCompetitorsData: BacklinkCometitorData[] = [];
+
+        // Process all backlink competitor entries (skip header)
+        for (let i = 1; i < lines.length; i++) {
+            const parts = lines[i].split(';');
+            if (parts.length >= 6) {
+                const backlinkCometitorData: BacklinkCometitorData = {
+                    domain: parts[1] || '',
+                    totalBacklinks: parseInt(parts[5] || '0'),
+                    totalReferringDomains: parseFloat(parts[4] || '0'),
+                    similarity: parseFloat(parts[2] || '0'),
+                    commonRefdomains: parseInt(parts[3] || '0'),
+                    averageDomainAuthority: parseInt(parts[0] || '0'),
+                };
+
+                backlinkCompetitorsData.push(backlinkCometitorData);
+            }
+        }
+
+        return backlinkCompetitorsData;
     }
 
     // Transform global keyword data (multiple databases format)
@@ -802,7 +1001,6 @@ export class SEMrushService {
             throw new SEMrushError('Invalid CSV response from SEMrush');
         }
 
-        const headers = lines[0].split(';');
         const relatedKeywords: RelatedKeyword[] = [];
 
         // Process all related keyword entries (skip header)

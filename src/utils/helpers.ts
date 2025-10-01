@@ -38,3 +38,10 @@ export function generateExpiryDate(days = 7) {
 export function capitalizeFirst(str: string) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
+
+// Formats a UNIX timestamp (in seconds) to YYYY-MM-DD
+export function formatDate(timestamp: string): string {
+    if (!timestamp) return '';
+    const date = new Date(parseInt(timestamp, 10) * 1000); // convert seconds to ms
+    return date.toISOString().split('T')[0]; // YYYY-MM-DD
+}
