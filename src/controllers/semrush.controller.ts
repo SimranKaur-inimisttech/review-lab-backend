@@ -94,12 +94,14 @@ export const getWebsiteAuditdAnalysis = asyncHandler(async (req: Request, res: R
 
 export const getBacklinkOverviewAnalysis = asyncHandler(async (req: Request, res: Response) => {
     const { domain } = req.params;
+    const { onlyProfile } = req.query as { onlyProfile?: string };
+
     if (!domain) {
         throw new ApiError(400, `Domain parameter is required`);
     }
     const userId = req.user!.id;
 
-    const data = await semrushService.getBacklinkOverview(domain, userId);
+    const data = await semrushService.getBacklinkOverview(domain, userId, onlyProfile === 'true');
 
     res.status(200).json(new ApiResponse(200, data, "Backlink data fetched successfully"));
 });
