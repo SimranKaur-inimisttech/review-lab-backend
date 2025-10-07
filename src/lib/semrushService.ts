@@ -584,7 +584,7 @@ export class SEMrushService {
     }
 
     // Get backlink analytics data (using domain backlinks overview as example)
-    async getBacklinks(domain: string, userId: string, limit: number = 2,
+    async getBacklinks(domain: string, userId: string, limit: number = 30,
         offset: number = 0): Promise<any> {
         const params: Record<string, string> = {
             type: 'backlinks',
@@ -594,7 +594,95 @@ export class SEMrushService {
             display_limit: limit.toString(),
             display_offset: offset.toString()
         };
-
+        if (offset == 0) {
+            return [
+                {
+                    "sourceDomain": "rule34.dev",
+                    "sourceUrl": "https://rule34.dev/video",
+                    "targetUrl": "https://yourdomain.com/video",
+                    "anchorText": "",
+                    "doFollow": false,
+                    "domainAuthority": 0,
+                    "pageAuthority": 88,
+                    "firstSeen": "1748797597",
+                    "lastSeen": "1753673475\r",
+                    "status": "new",
+                    "type": "text"
+                },
+                {
+                    "sourceDomain": "github.com",
+                    "sourceUrl": "https://github.com/Schepp/CSS-Filters-Polyfill",
+                    "targetUrl": "http://www.yourdomain.com/",
+                    "anchorText": "www.yourdomain.com",
+                    "doFollow": false,
+                    "domainAuthority": 0,
+                    "pageAuthority": 85,
+                    "firstSeen": "1750515079",
+                    "lastSeen": "1750515079\r",
+                    "status": "active",
+                    "type": "image"
+                }]
+        }
+        if (offset == 2) {
+            return [
+                {
+                    "sourceDomain": "stacks-on-stacks.com",
+                    "sourceUrl": "https://stacks-on-stacks.com/disc-golf-flight-chart-playground",
+                    "targetUrl": "https://yourdomain.com/flight-chart-playground",
+                    "anchorText": "",
+                    "doFollow": false,
+                    "domainAuthority": 0,
+                    "pageAuthority": 83,
+                    "firstSeen": "1758177750",
+                    "lastSeen": "1758177750\r",
+                    "status": "broken",
+                    "type": "nofollow"
+                },
+                {
+                    "sourceDomain": "replmarket.com",
+                    "sourceUrl": "https://replmarket.com/shop/list.php?ca_id=001&page_rows&sort=index_no&sortodr=desc",
+                    "targetUrl": "https://www.yourdomain.com/",
+                    "anchorText": "",
+                    "doFollow": false,
+                    "domainAuthority": 0,
+                    "pageAuthority": 82,
+                    "firstSeen": "1758026925",
+                    "lastSeen": "1758702806\r",
+                    "status": "lost",
+                    "type": "dofollow"
+                }
+            ]
+        }
+        if (offset == 4) {
+            return [
+                {
+                    "sourceDomain": "inimist.com",
+                    "sourceUrl": "https://replmarket.com/shop/list.php?ca_id=011&page_rows&sort=index_no&sortodr=desc",
+                    "targetUrl": "https://www.yourdomain.com/",
+                    "anchorText": "",
+                    "doFollow": false,
+                    "domainAuthority": 0,
+                    "pageAuthority": 82,
+                    "firstSeen": "1757505956",
+                    "lastSeen": "1758932740",
+                    "status": "active",
+                    "type": "ugc"
+                },
+                {
+                    "sourceDomain": "youtube.com",
+                    "sourceUrl": "https://replmarket.com/shop/list.php?ca_id=011&page_rows&sort=index_no&sortodr=desc",
+                    "targetUrl": "https://www.yourdomain.com/",
+                    "anchorText": "",
+                    "doFollow": false,
+                    "domainAuthority": 0,
+                    "pageAuthority": 82,
+                    "firstSeen": "1757505956",
+                    "lastSeen": "1758932740",
+                    "status": "new",
+                    "type": "text"
+                }
+            ]
+        }
         // return [
         //     {
         //         "sourceDomain": "rule34.dev",

@@ -7,7 +7,11 @@ import { ParsedQs } from "qs";
 
 interface KeywordQuery extends ParsedQs {
     keyword: string;
-    database?: string;
+    database: string;
+    limit?: string;
+    offset?: string;
+}
+interface BacklinkQuery extends ParsedQs {
     limit?: string;
     offset?: string;
 }
@@ -123,9 +127,28 @@ export const getBacklinksAnalysis = asyncHandler(async (req: Request, res: Respo
     if (!domain) {
         throw new ApiError(400, `Domain parameter is required`);
     }
+
+    const { limit = "30", offset = "0" } = req.query as BacklinkQuery;
+
     const userId = req.user!.id;
+    const numericLimit = Math.min(parseInt(limit, 10) || 30, 100);
+    const numericOffset = parseInt(offset, 10) || 0;
 
-    const data = await semrushService.getBacklinks(domain, userId);
+    const data = await semrushService.getBacklinks(domain, userId, numericLimit,
+        numericOffset);
 
-    res.status(200).json(new ApiResponse(200, data, "Backlink data fetched successfully"));
+    const totalAvailable = numericOffset + data.length + (data.length === numericLimit ? numericLimit : 0);
+
+    res.status(200).json(new ApiResponse(200, {
+        domain: domain.trim(),
+        totalResults: data.length,
+        totalAvailable,
+        currentPage: {
+            offset: numericOffset,
+            limit: numericLimit,
+            count: data.length
+        },
+        hasMore: data.length === numericLimit,
+        backlinks: data
+    }, "Backlink data fetched successfully"));
 });
