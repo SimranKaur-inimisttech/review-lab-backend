@@ -2,6 +2,7 @@ import { supabaseAdmin } from '@/config/supabaseAdmin';
 import { cacheService } from './cacheService';
 import axios, { AxiosResponse } from 'axios';
 import { capitalizeFirst, formatDate } from '@/utils/helpers';
+import { backlinkCacheService } from './backlinkCacheService';
 
 // =============================================================================
 // SIMPLIFIED SEMRUSH API SERVICE - FUNCTIONAL VERSION
@@ -56,6 +57,7 @@ export interface BacklinkCometitorData {
     averageDomainAuthority: number;
 }
 export interface Backlink {
+    id: string;
     sourceDomain: string;
     sourceUrl: string;
     targetUrl: string;
@@ -251,7 +253,7 @@ export class SEMrushService {
         method: 'GET' | 'POST' = 'GET'
     ): Promise<any> {
         // Only check quota if cache is empty
-        // await this.checkQuota(userId, apiEndpoint, creditsRequired);
+        await this.checkQuota(userId, apiEndpoint, creditsRequired);
 
         const url = new URL(endPoint, this.baseUrl);
         url.searchParams.append('key', this.apiKey);
@@ -265,13 +267,13 @@ export class SEMrushService {
 
         // for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
         try {
-            let response: AxiosResponse;
-            console.log('semrush request ====>', url.toString());
-            if (method === 'POST') {
-                response = await axios.post(url.toString());
-            } else {
-                response = await axios.get(url.toString());
-            }
+            // let response: AxiosResponse;
+            // console.log('semrush request ====>', url.toString());
+            // if (method === 'POST') {
+            //     response = await axios.post(url.toString());
+            // } else {
+            //     response = await axios.get(url.toString());
+            // }
 
             // Success logging
             await this.logUsage(
@@ -279,7 +281,9 @@ export class SEMrushService {
                 params.domain, params.phrase
             );
 
-            return response.data;
+            // return response.data;
+            return `ascore;total;domains_num;urls_num;follows_num;nofollows_num
+                          74;22063983;49145;13059030;47793;22956`;
         } catch (error: any) {
             if (axios.isAxiosError(error) && error.response) {
                 const status = error.response.status;
@@ -475,54 +479,62 @@ export class SEMrushService {
             target_type: 'root_domain',
             export_columns: 'ascore,total,domains_num,urls_num,follows_num,nofollows_num'
         };
-
-        if (onlyProfile) {
-            return {
-                profile: {
-                    totalBacklinks: 12345,
-                    totalReferringDomains: 678,
-                    doFollowLinks: 91011,
-                    noFollowLinks: 1213,
-                    averageDomainAuthority: 45,
-                    toxicityScore: 0,
-                    newBacklinks: 0,
-                    lostBacklinks: 0
-                }
-            };
-        }
-
-        const competitorsBacklinkData = await this.getBacklinkCompetitorsData(domain, userId);
-        const backlinks = await this.getBacklinks(domain, userId);
-
-        return {
-            profile: {
-                totalBacklinks: 12345,
-                totalReferringDomains: 678,
-                doFollowLinks: 91011,
-                noFollowLinks: 1213,
-                averageDomainAuthority: 45,
-                toxicityScore: 0,
-                newBacklinks: 0,
-                lostBacklinks: 0
-            },
-            competitorsBacklinkData,
-            backlinks
-        }
-
         // Check cache first
-        // const cachedData = await cacheService.get('keywords', keyword, 'global');
-        // if (cachedData) {
-        //     return this.formatKeywordResponse(cachedData)
+        const cachedData = await backlinkCacheService.get('backlink_cache', domain, 'overview', 'global');
+        if (cachedData) {
+            console.log("cachedData=====>", cachedData.data)
+            return { profile: cachedData.data }
+        }
+        // if (onlyProfile) {
+        //     return {
+        //         profile: {
+        //             totalBacklinks: 12345,
+        //             totalReferringDomains: 678,
+        //             doFollowLinks: 91011,
+        //             noFollowLinks: 1213,
+        //             averageDomainAuthority: 45,
+        //             toxicityScore: 0,
+        //             newBacklinks: 0,
+        //             lostBacklinks: 0
+        //         }
+        //     };
         // }
 
-        const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'Backlink_analysis', 'Backlinks_overview', 1);
+        // const competitorsBacklinkData = await this.getBacklinkCompetitorsData(domain, userId);
+        // const backlinks = await this.getBacklinks(domain, userId);
+
+        // return {
+        //     profile: {
+        //         totalBacklinks: 12345,
+        //         totalReferringDomains: 678,
+        //         doFollowLinks: 91011,
+        //         noFollowLinks: 1213,
+        //         averageDomainAuthority: 45,
+        //         toxicityScore: 0,
+        //         newBacklinks: 0,
+        //         lostBacklinks: 0
+        //     },
+        //     competitorsBacklinkData,
+        //     backlinks
+        // }
+
+        const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'backlink_analysis', 'Backlinks_overview', 2);
+        const csvData1 = `ascore;total;domains_num;urls_num;follows_num;nofollows_num
+                          74;22063983;49145;13059030;47793;22956`
 
         const parsedData = this.transformBacklinkOverview(csvData);
 
         // const tableData = this.formatKeywordTableData(parsedData, userId)
 
-        // // Store in cache
-        // await cacheService.set('keywords', tableData, 36);
+        // Store in cache
+        await backlinkCacheService.set({
+            table: 'backlink_cache',
+            domain,
+            dataType: 'overview',
+            databaseRegion: 'global',
+            data: parsedData,
+            ttlHours: 24
+        });
         return parsedData;
         // return csvData;
     }
@@ -565,13 +577,8 @@ export class SEMrushService {
                 "averageDomainAuthority": 31
             }
         ]
-        // Check cache first
-        // const cachedData = await cacheService.get('keywords', keyword, 'global');
-        // if (cachedData) {
-        //     return this.formatKeywordResponse(cachedData)
-        // }
 
-        const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'Backlink_analysis', 'Backlinks_competitor', 1);
+        const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'backlink_analysis', 'Backlinks_competitor', 5 * limit);
 
         const parsedData = this.transformBacklinkCometitorsData(csvData);
 
@@ -597,6 +604,7 @@ export class SEMrushService {
         if (offset == 0) {
             return [
                 {
+                    "id": "rule34.dev-23",
                     "sourceDomain": "rule34.dev",
                     "sourceUrl": "https://rule34.dev/video",
                     "targetUrl": "https://yourdomain.com/video",
@@ -610,6 +618,7 @@ export class SEMrushService {
                     "type": "text"
                 },
                 {
+                    "id": "github.com-39",
                     "sourceDomain": "github.com",
                     "sourceUrl": "https://github.com/Schepp/CSS-Filters-Polyfill",
                     "targetUrl": "http://www.yourdomain.com/",
@@ -626,6 +635,7 @@ export class SEMrushService {
         if (offset == 2) {
             return [
                 {
+                    "id": "stacks-on-stacks.com-59",
                     "sourceDomain": "stacks-on-stacks.com",
                     "sourceUrl": "https://stacks-on-stacks.com/disc-golf-flight-chart-playground",
                     "targetUrl": "https://yourdomain.com/flight-chart-playground",
@@ -639,6 +649,7 @@ export class SEMrushService {
                     "type": "nofollow"
                 },
                 {
+                    "id": "replmarket.com-98",
                     "sourceDomain": "replmarket.com",
                     "sourceUrl": "https://replmarket.com/shop/list.php?ca_id=001&page_rows&sort=index_no&sortodr=desc",
                     "targetUrl": "https://www.yourdomain.com/",
@@ -656,6 +667,7 @@ export class SEMrushService {
         if (offset == 4) {
             return [
                 {
+                    "id": "inimist.com-98",
                     "sourceDomain": "inimist.com",
                     "sourceUrl": "https://replmarket.com/shop/list.php?ca_id=011&page_rows&sort=index_no&sortodr=desc",
                     "targetUrl": "https://www.yourdomain.com/",
@@ -669,6 +681,7 @@ export class SEMrushService {
                     "type": "ugc"
                 },
                 {
+                    "id": "youtube.com-98",
                     "sourceDomain": "youtube.com",
                     "sourceUrl": "https://replmarket.com/shop/list.php?ca_id=011&page_rows&sort=index_no&sortodr=desc",
                     "targetUrl": "https://www.yourdomain.com/",
@@ -740,13 +753,12 @@ export class SEMrushService {
         //         "lastSeen": "1758932740"
         //     }
         // ]
-
-        // const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'Backlink_analysis', 'Backlinks', 1);
+        const creditsUsed = (limit / 100) * 3;
+        // const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'backlink_analysis', 'Backlinks', creditsUsed);
         const csvData = `
         source_url;target_url;anchor;nofollow;page_ascore;first_seen;last_seen;response_code;newlink;lostlink;form;frame;image;sitewide
         https://rule34.dev/video;https://yourdomain.com/video;;false;88;1748797597;1753673475;301;false;true;false;false;false;false
         https://github.com/Schepp/CSS-Filters-Polyfill;http://www.yourdomain.com/;www.yourdomain.com;true;85;1750515079;1750515079;200;false;false;false;false;false;false`;
-        console.log('backlinkData ====>', csvData);
         const parsedData = this.transformBacklinksData(csvData);
         return parsedData;
 
@@ -996,8 +1008,8 @@ export class SEMrushService {
                 } else if (this.isTrue(parts[13])) {
                     type = 'sitewide';
                 }
-
                 backlinks.push({
+                    id: `${sourceDomain}-${sourceUrl.length}`,
                     sourceDomain,
                     sourceUrl,
                     targetUrl: parts[1] || '',
