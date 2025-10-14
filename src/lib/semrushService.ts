@@ -180,10 +180,22 @@ export class SEMrushService {
 
             const currentUsage = usage?.[usedColumn] || 0;
             const limit = tierLimits[limitColumn] || 0;
-
+        
+            // Check per-endpoint limit first
             if (currentUsage + creditsRequired > limit) {
                 throw new QuotaExceededError(
                     `${apiEndpoint} quota exceeded. Used: ${currentUsage}/${limit}`,
+                    apiEndpoint
+                );
+            }
+
+            // Check total credits limit next
+            const totalUsed = usage?.total_credits_used || 0;
+            const totalLimit = tierLimits.total_credits_limit || 0;
+
+            if (totalUsed + creditsRequired > totalLimit) {
+                throw new QuotaExceededError(
+                    `Total credits quota exceeded. Used: ${totalUsed}/${totalLimit}`,
                     apiEndpoint
                 );
             }
@@ -278,12 +290,35 @@ export class SEMrushService {
             // Success logging
             await this.logUsage(
                 userId, apiEndpoint, requestType, 'success', creditsRequired,
-                params.domain, params.phrase
+                params.domain || params.target, params.phrase
             );
 
             // return response.data;
-            return `ascore;total;domains_num;urls_num;follows_num;nofollows_num
-                          74;22063983;49145;13059030;47793;22956`;
+            if (requestType == 'Backlinks_overview') {
+                return `ascore;total;domains_num;urls_num;follows_num;nofollows_num
+                              74;22063983;49145;13059030;47793;22956`;
+            } else if (requestType == 'Backlinks_competitor') {
+                return `ascore;neighbour;similarity;common_refdomains;domains_num;backlinks_num
+                74;searchenginewatch.com;34;11537;47115;35855777
+                68;wordstream.com;32;9575;37065;1750926
+                77;moz.com;31;15732;103754;21136846
+                80;searchengineland.com;36;17584;79939;42840590
+                76;marketingland.com;30;9058;39986;9756098`;
+            } else if (requestType == 'Backlinks') {
+                if (params.display_offset == '0') {
+                    return `source_url;target_url;anchor;nofollow;page_ascore;first_seen;last_seen;response_code;newlink;lostlink;form;frame;image;sitewide
+                    https://rule34.dev/video;https://yourdomain.com/video;;false;88;1748797597;1753673475;301;false;true;false;false;false;false
+                    https://github.com/Schepp/CSS-Filters-Polyfill;http://www.yourdomain.com/;www.yourdomain.com;true;85;1750515079;1750515079;200;false;false;false;false;false;false`
+                } else if (params.display_offset == '2') {
+                    return `source_url;target_url;anchor;nofollow;page_ascore;first_seen;last_seen;response_code;newlink;lostlink;form;frame;image;sitewide
+                    https://stacks-on-stacks.com/disc-golf-flight-chart-playground;https://yourdomain.com/flight-chart-playground;;false;83;1758177750;1758177750;200;true;false;false;false;false;false
+                    https://replmarket.com/shop/list.php?ca_id=011&page_rows&sort=index_no&sortodr=desc;https://www.yourdomain.com/;;false;82;1757505956;1758932740;200;false;false;false;false;true;false`
+                } else if (params.display_offset == '4') {
+                    return `source_url;target_url;anchor;nofollow;page_ascore;first_seen;last_seen;response_code;newlink;lostlink;form;frame;image;sitewide
+                    http://universaldependencies.org/conll17/;http://yourdomain.com/conll17/;;false;81;1684464406;1750211596;200;false;true;false;false;false;false
+                    http://universaldependencies.org/conll17/;https://yourdomain.com/conll17/;;false;81;1755114370;1755114370;200;false;false;false;false;false;false`
+                }
+            }
         } catch (error: any) {
             if (axios.isAxiosError(error) && error.response) {
                 const status = error.response.status;
@@ -291,14 +326,14 @@ export class SEMrushService {
                 if (status === 429) {
                     const retryAfter = parseInt(error.response.headers['retry-after'] || '60', 10);
                     await this.logUsage(
-                        userId, apiEndpoint, requestType, 'rate_limited', 0, params.domain, params.phrase, `Rate limited, retry after ${retryAfter}s`
+                        userId, apiEndpoint, requestType, 'rate_limited', 0, params.domain, params.phrase || params.target, `Rate limited, retry after ${retryAfter}s`
                     );
                     throw new RateLimitError('Rate limited by SEMrush API', retryAfter);
                 }
 
                 if (status === 402) {
                     await this.logUsage(
-                        userId, apiEndpoint, requestType, 'quota_exceeded', 0, params.domain, params.phrase, 'SEMrush API quota exceeded'
+                        userId, apiEndpoint, requestType, 'quota_exceeded', 0, params.domain, params.phrase || params.target, 'SEMrush API quota exceeded'
                     );
                     throw new QuotaExceededError('SEMrush API quota exceeded', apiEndpoint);
                 }
@@ -320,7 +355,7 @@ export class SEMrushService {
 
         // Log failed API call after retries
         await this.logUsage(
-            userId, apiEndpoint, requestType, 'failed', 0, params.domain, params.phrase, lastError.message);
+            userId, apiEndpoint, requestType, 'failed', 0, params.domain, params.phrase || params.target, lastError.message);
 
         throw new SEMrushError(
             `Failed to make request after ${this.maxRetries + 1
@@ -480,51 +515,26 @@ export class SEMrushService {
             export_columns: 'ascore,total,domains_num,urls_num,follows_num,nofollows_num'
         };
         // Check cache first
-        const cachedData = await backlinkCacheService.get('backlink_cache', domain, 'overview', 'global');
-        if (cachedData) {
-            console.log("cachedData=====>", cachedData.data)
-            return { profile: cachedData.data }
+        const overviewCache = await backlinkCacheService.get('backlink_cache', domain, 'overview', 'global');
+
+        if (overviewCache) {
+            if (onlyProfile) return { profile: overviewCache.data };
+            // Fetch competitor + backlinks (from their own caches or API)
+            const [competitorsBacklinkData, backlinks] = await Promise.all([
+                this.getBacklinkCompetitorsData(domain, userId),
+                this.getBacklinks(domain, userId)
+            ]);
+
+            return {
+                profile: overviewCache.data,
+                competitorsBacklinkData,
+                backlinks
+            };
         }
-        // if (onlyProfile) {
-        //     return {
-        //         profile: {
-        //             totalBacklinks: 12345,
-        //             totalReferringDomains: 678,
-        //             doFollowLinks: 91011,
-        //             noFollowLinks: 1213,
-        //             averageDomainAuthority: 45,
-        //             toxicityScore: 0,
-        //             newBacklinks: 0,
-        //             lostBacklinks: 0
-        //         }
-        //     };
-        // }
 
-        // const competitorsBacklinkData = await this.getBacklinkCompetitorsData(domain, userId);
-        // const backlinks = await this.getBacklinks(domain, userId);
+        const overviewData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'backlink_analysis', 'Backlinks_overview', 2);
 
-        // return {
-        //     profile: {
-        //         totalBacklinks: 12345,
-        //         totalReferringDomains: 678,
-        //         doFollowLinks: 91011,
-        //         noFollowLinks: 1213,
-        //         averageDomainAuthority: 45,
-        //         toxicityScore: 0,
-        //         newBacklinks: 0,
-        //         lostBacklinks: 0
-        //     },
-        //     competitorsBacklinkData,
-        //     backlinks
-        // }
-
-        const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'backlink_analysis', 'Backlinks_overview', 2);
-        const csvData1 = `ascore;total;domains_num;urls_num;follows_num;nofollows_num
-                          74;22063983;49145;13059030;47793;22956`
-
-        const parsedData = this.transformBacklinkOverview(csvData);
-
-        // const tableData = this.formatKeywordTableData(parsedData, userId)
+        const parsedData = this.transformBacklinkOverview(overviewData);
 
         // Store in cache
         await backlinkCacheService.set({
@@ -535,8 +545,23 @@ export class SEMrushService {
             data: parsedData,
             ttlHours: 24
         });
-        return parsedData;
-        // return csvData;
+
+        // If only profile requested, stop here
+        if (onlyProfile) {
+            return { profile: parsedData };
+        }
+
+        // Fetch other data (they handle their own cache)
+        const [competitorsBacklinkData, backlinks] = await Promise.all([
+            this.getBacklinkCompetitorsData(domain, userId),
+            this.getBacklinks(domain, userId)
+        ]);
+
+        return {
+            profile: parsedData,
+            competitorsBacklinkData,
+            backlinks
+        };
     }
 
     // Get backlink competitor data
@@ -551,34 +576,7 @@ export class SEMrushService {
             display_offset: offset.toString()
         };
 
-        return [
-            {
-                "domain": "bedpage.com",
-                "totalBacklinks": 22639363,
-                "totalReferringDomains": 27910,
-                "similarity": 0.14346,
-                "commonRefdomains": 1787,
-                "averageDomainAuthority": 66
-            },
-            {
-                "domain": "mydomain.com",
-                "totalBacklinks": 1324082,
-                "totalReferringDomains": 12097,
-                "similarity": 0.123944,
-                "commonRefdomains": 1554,
-                "averageDomainAuthority": 35
-            },
-            {
-                "domain": "domainname.com",
-                "totalBacklinks": 43170,
-                "totalReferringDomains": 6224,
-                "similarity": 0.084323,
-                "commonRefdomains": 967,
-                "averageDomainAuthority": 31
-            }
-        ]
-
-        const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'backlink_analysis', 'Backlinks_competitor', 5 * limit);
+        const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'competitor_analysis', 'Backlinks_comparison', 5 * limit);
 
         const parsedData = this.transformBacklinkCometitorsData(csvData);
 
@@ -601,165 +599,35 @@ export class SEMrushService {
             display_limit: limit.toString(),
             display_offset: offset.toString()
         };
-        if (offset == 0) {
-            return [
-                {
-                    "id": "rule34.dev-23",
-                    "sourceDomain": "rule34.dev",
-                    "sourceUrl": "https://rule34.dev/video",
-                    "targetUrl": "https://yourdomain.com/video",
-                    "anchorText": "",
-                    "doFollow": false,
-                    "domainAuthority": 0,
-                    "pageAuthority": 88,
-                    "firstSeen": "1748797597",
-                    "lastSeen": "1753673475\r",
-                    "status": "new",
-                    "type": "text"
-                },
-                {
-                    "id": "github.com-39",
-                    "sourceDomain": "github.com",
-                    "sourceUrl": "https://github.com/Schepp/CSS-Filters-Polyfill",
-                    "targetUrl": "http://www.yourdomain.com/",
-                    "anchorText": "www.yourdomain.com",
-                    "doFollow": false,
-                    "domainAuthority": 0,
-                    "pageAuthority": 85,
-                    "firstSeen": "1750515079",
-                    "lastSeen": "1750515079\r",
-                    "status": "active",
-                    "type": "image"
-                }]
+
+        const page = Math.floor(offset / limit) + 1; // calculate current page
+
+        // Check cache first
+        const cachedData = await backlinkCacheService.get('backlink_cache', domain, 'backlinks', 'global');
+
+        if (cachedData) {
+            const backlinks = cachedData.data.filter((bk: any) => bk.page === page);;
+            if (backlinks.length > 0) {
+                return backlinks;
+            }
         }
-        if (offset == 2) {
-            return [
-                {
-                    "id": "stacks-on-stacks.com-59",
-                    "sourceDomain": "stacks-on-stacks.com",
-                    "sourceUrl": "https://stacks-on-stacks.com/disc-golf-flight-chart-playground",
-                    "targetUrl": "https://yourdomain.com/flight-chart-playground",
-                    "anchorText": "",
-                    "doFollow": false,
-                    "domainAuthority": 0,
-                    "pageAuthority": 83,
-                    "firstSeen": "1758177750",
-                    "lastSeen": "1758177750\r",
-                    "status": "broken",
-                    "type": "nofollow"
-                },
-                {
-                    "id": "replmarket.com-98",
-                    "sourceDomain": "replmarket.com",
-                    "sourceUrl": "https://replmarket.com/shop/list.php?ca_id=001&page_rows&sort=index_no&sortodr=desc",
-                    "targetUrl": "https://www.yourdomain.com/",
-                    "anchorText": "",
-                    "doFollow": false,
-                    "domainAuthority": 0,
-                    "pageAuthority": 82,
-                    "firstSeen": "1758026925",
-                    "lastSeen": "1758702806\r",
-                    "status": "lost",
-                    "type": "dofollow"
-                }
-            ]
-        }
-        if (offset == 4) {
-            return [
-                {
-                    "id": "inimist.com-98",
-                    "sourceDomain": "inimist.com",
-                    "sourceUrl": "https://replmarket.com/shop/list.php?ca_id=011&page_rows&sort=index_no&sortodr=desc",
-                    "targetUrl": "https://www.yourdomain.com/",
-                    "anchorText": "",
-                    "doFollow": false,
-                    "domainAuthority": 0,
-                    "pageAuthority": 82,
-                    "firstSeen": "1757505956",
-                    "lastSeen": "1758932740",
-                    "status": "active",
-                    "type": "ugc"
-                },
-                {
-                    "id": "youtube.com-98",
-                    "sourceDomain": "youtube.com",
-                    "sourceUrl": "https://replmarket.com/shop/list.php?ca_id=011&page_rows&sort=index_no&sortodr=desc",
-                    "targetUrl": "https://www.yourdomain.com/",
-                    "anchorText": "",
-                    "doFollow": false,
-                    "domainAuthority": 0,
-                    "pageAuthority": 82,
-                    "firstSeen": "1757505956",
-                    "lastSeen": "1758932740",
-                    "status": "new",
-                    "type": "text"
-                }
-            ]
-        }
-        // return [
-        //     {
-        //         "sourceDomain": "rule34.dev",
-        //         "sourceUrl": "https://rule34.dev/video",
-        //         "targetUrl": "https://yourdomain.com/video",
-        //         "anchorText": "",
-        //         "doFollow": false,
-        //         "domainAuthority": 0,
-        //         "pageAuthority": 88,
-        //         "firstSeen": "1748797597",
-        //         "lastSeen": "1753673475\r"
-        //     },
-        //     {
-        //         "sourceDomain": "github.com",
-        //         "sourceUrl": "https://github.com/Schepp/CSS-Filters-Polyfill",
-        //         "targetUrl": "http://www.yourdomain.com/",
-        //         "anchorText": "www.yourdomain.com",
-        //         "doFollow": false,
-        //         "domainAuthority": 0,
-        //         "pageAuthority": 85,
-        //         "firstSeen": "1750515079",
-        //         "lastSeen": "1750515079\r"
-        //     },
-        //     {
-        //         "sourceDomain": "stacks-on-stacks.com",
-        //         "sourceUrl": "https://stacks-on-stacks.com/disc-golf-flight-chart-playground",
-        //         "targetUrl": "https://yourdomain.com/flight-chart-playground",
-        //         "anchorText": "",
-        //         "doFollow": false,
-        //         "domainAuthority": 0,
-        //         "pageAuthority": 83,
-        //         "firstSeen": "1758177750",
-        //         "lastSeen": "1758177750\r"
-        //     },
-        //     {
-        //         "sourceDomain": "replmarket.com",
-        //         "sourceUrl": "https://replmarket.com/shop/list.php?ca_id=001&page_rows&sort=index_no&sortodr=desc",
-        //         "targetUrl": "https://www.yourdomain.com/",
-        //         "anchorText": "",
-        //         "doFollow": false,
-        //         "domainAuthority": 0,
-        //         "pageAuthority": 82,
-        //         "firstSeen": "1758026925",
-        //         "lastSeen": "1758702806\r"
-        //     },
-        //     {
-        //         "sourceDomain": "replmarket.com",
-        //         "sourceUrl": "https://replmarket.com/shop/list.php?ca_id=011&page_rows&sort=index_no&sortodr=desc",
-        //         "targetUrl": "https://www.yourdomain.com/",
-        //         "anchorText": "",
-        //         "doFollow": false,
-        //         "domainAuthority": 0,
-        //         "pageAuthority": 82,
-        //         "firstSeen": "1757505956",
-        //         "lastSeen": "1758932740"
-        //     }
-        // ]
         const creditsUsed = (limit / 100) * 3;
-        // const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'backlink_analysis', 'Backlinks', creditsUsed);
-        const csvData = `
-        source_url;target_url;anchor;nofollow;page_ascore;first_seen;last_seen;response_code;newlink;lostlink;form;frame;image;sitewide
-        https://rule34.dev/video;https://yourdomain.com/video;;false;88;1748797597;1753673475;301;false;true;false;false;false;false
-        https://github.com/Schepp/CSS-Filters-Polyfill;http://www.yourdomain.com/;www.yourdomain.com;true;85;1750515079;1750515079;200;false;false;false;false;false;false`;
+        console.log('Calculated credits for backlinks:', creditsUsed);
+        const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'backlink_analysis', 'Backlinks', creditsUsed);
+
         const parsedData = this.transformBacklinksData(csvData);
+        // Attach page to each keyword JSON
+        const backlinksWithPage = parsedData.map(data => ({ ...data, page }))
+        // Store in cache
+        await backlinkCacheService.set({
+            table: 'backlink_cache',
+            domain,
+            dataType: 'backlinks',
+            databaseRegion: 'global',
+            data: [...(cachedData?.data || []), ...backlinksWithPage],
+            ttlHours: 12
+        });
+
         return parsedData;
 
     }
