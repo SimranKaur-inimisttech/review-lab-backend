@@ -180,7 +180,7 @@ export class SEMrushService {
 
             const currentUsage = usage?.[usedColumn] || 0;
             const limit = tierLimits[limitColumn] || 0;
-        
+
             // Check per-endpoint limit first
             if (currentUsage + creditsRequired > limit) {
                 throw new QuotaExceededError(
@@ -297,7 +297,7 @@ export class SEMrushService {
             if (requestType == 'Backlinks_overview') {
                 return `ascore;total;domains_num;urls_num;follows_num;nofollows_num
                               74;22063983;49145;13059030;47793;22956`;
-            } else if (requestType == 'Backlinks_competitor') {
+            } else if (requestType == 'Backlinks_comparison') {
                 return `ascore;neighbour;similarity;common_refdomains;domains_num;backlinks_num
                 74;searchenginewatch.com;34;11537;47115;35855777
                 68;wordstream.com;32;9575;37065;1750926
@@ -539,6 +539,7 @@ export class SEMrushService {
         // Store in cache
         await backlinkCacheService.set({
             table: 'backlink_cache',
+            user_id: userId,
             domain,
             dataType: 'overview',
             databaseRegion: 'global',
@@ -575,17 +576,25 @@ export class SEMrushService {
             display_limit: limit.toString(),
             display_offset: offset.toString()
         };
-
+        // Check cache first
+        const cachedData = await backlinkCacheService.get('competitor_backlink_cache', domain, 'Backlinks_comparison', 'global');
+        if (cachedData) {
+            return cachedData.data;
+        }
         const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'competitor_analysis', 'Backlinks_comparison', 5 * limit);
 
         const parsedData = this.transformBacklinkCometitorsData(csvData);
-
-        // const tableData = this.formatKeywordTableData(parsedData, userId)
-
-        // // Store in cache
-        // await cacheService.set('keywords', tableData, 36);
+        // Store in cache
+        await backlinkCacheService.set({
+            table: 'competitor_backlink_cache',
+            user_id: userId,
+            domain,
+            dataType: 'Backlinks_comparison',
+            databaseRegion: 'global',
+            data: parsedData,
+            ttlHours: 6
+        });
         return parsedData;
-        // return csvData;
     }
 
     // Get backlink analytics data (using domain backlinks overview as example)
@@ -621,6 +630,7 @@ export class SEMrushService {
         // Store in cache
         await backlinkCacheService.set({
             table: 'backlink_cache',
+            user_id: userId,
             domain,
             dataType: 'backlinks',
             databaseRegion: 'global',

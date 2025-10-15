@@ -30,7 +30,7 @@ export const cacheService = {
             // });
             .upsert(
                 [{ ...data, expires_at: expiresAt }],
-                { onConflict: 'keyword,database', ignoreDuplicates: false }
+                { onConflict: 'user_id,keyword,database', ignoreDuplicates: false }
             );
         console.log("cache error--------------------->>>", error)
     }

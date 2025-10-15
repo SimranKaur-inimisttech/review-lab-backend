@@ -24,6 +24,7 @@ export const backlinkCacheService = {
 
     async set({
         table,
+        user_id,    
         domain,
         dataType,
         databaseRegion,
@@ -31,6 +32,7 @@ export const backlinkCacheService = {
         ttlHours = 24
     }: {
         table: string;
+        user_id: string;
         domain: string;
         dataType: string;
         databaseRegion?: string;
@@ -42,14 +44,15 @@ export const backlinkCacheService = {
         expiresAt.setHours(expiresAt.getHours() + ttlHours);
         const { error } = await supabaseAdmin.from(table)
             .upsert(
-                [{
+                [{  
+                    user_id,
                     domain,
                     data_type: dataType,
                     database_region: databaseRegion,
                     data,
                     expires_at: expiresAt
                 }],
-                { onConflict: 'domain,data_type,database_region', ignoreDuplicates: false }
+                { onConflict: 'user_id,domain,data_type,database_region', ignoreDuplicates: false }
             );
         console.log("cache error--------------------->>>", error)
     }
