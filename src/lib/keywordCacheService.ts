@@ -1,8 +1,7 @@
 import { supabaseAdmin } from "@/config/supabaseAdmin";
 import { ApiError } from "@/utils/ApiError";
 
-// services/cacheService.ts
-export const cacheService = {
+export const keywordCacheService = {
     async get(table: string, keyword: string, database: string) {
 
         const { data: cache, error: cacheError } = await supabaseAdmin
@@ -24,14 +23,9 @@ export const cacheService = {
         const expiresAt = new Date();
         expiresAt.setHours(expiresAt.getHours() + cacheTtlHours);
         const { error } = await supabaseAdmin.from(table)
-            // .upsert({
-            //     ...data,
-            //     expires_at: expiresAt
-            // });
             .upsert(
                 [{ ...data, expires_at: expiresAt }],
                 { onConflict: 'user_id,keyword,database', ignoreDuplicates: false }
             );
-        console.log("cache error--------------------->>>", error)
     }
 };

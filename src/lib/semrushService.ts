@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/config/supabaseAdmin';
-import { cacheService } from './cacheService';
+import { keywordCacheService } from './keywordCacheService';
 import axios, { AxiosResponse } from 'axios';
 import { capitalizeFirst, formatDate } from '@/utils/helpers';
 import { backlinkCacheService } from './backlinkCacheService';
@@ -279,13 +279,13 @@ export class SEMrushService {
 
         // for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
         try {
-            // let response: AxiosResponse;
-            // console.log('semrush request ====>', url.toString());
-            // if (method === 'POST') {
-            //     response = await axios.post(url.toString());
-            // } else {
-            //     response = await axios.get(url.toString());
-            // }
+            let response: AxiosResponse;
+            console.log('semrush request ====>', url.toString());
+            if (method === 'POST') {
+                response = await axios.post(url.toString());
+            } else {
+                response = await axios.get(url.toString());
+            }
 
             // Success logging
             await this.logUsage(
@@ -293,8 +293,8 @@ export class SEMrushService {
                 params.domain || params.target, params.phrase
             );
 
-            // return response.data;
-            if (requestType == 'Backlinks_overview') {
+            return response.data;
+            /*if (requestType == 'Backlinks_overview') {
                 return `ascore;total;domains_num;urls_num;follows_num;nofollows_num
                               74;22063983;49145;13059030;47793;22956`;
             } else if (requestType == 'Backlinks_comparison') {
@@ -318,7 +318,7 @@ export class SEMrushService {
                     http://universaldependencies.org/conll17/;http://yourdomain.com/conll17/;;false;81;1684464406;1750211596;200;false;true;false;false;false;false
                     http://universaldependencies.org/conll17/;https://yourdomain.com/conll17/;;false;81;1755114370;1755114370;200;false;false;false;false;false;false`
                 }
-            }
+            }*/
         } catch (error: any) {
             if (axios.isAxiosError(error) && error.response) {
                 const status = error.response.status;
@@ -397,7 +397,7 @@ export class SEMrushService {
         }
 
         // Check cache first
-        const cachedData = await cacheService.get('keywords', keyword, database);
+        const cachedData = await keywordCacheService.get('keywords', keyword, database);
         if (
             cachedData &&
             cachedData.search_volume !== undefined &&
@@ -414,7 +414,7 @@ export class SEMrushService {
         const tableData = this.formatKeywordTableData(parsedData, userId)
 
         // Store in cache
-        await cacheService.set('keywords', tableData, 36);
+        await keywordCacheService.set('keywords', tableData, 36);
         return this.transformKeywordData(csvData, database);
     }
 
@@ -427,7 +427,7 @@ export class SEMrushService {
         };
 
         // Check cache first
-        const cachedData = await cacheService.get('keywords', keyword, 'global');
+        const cachedData = await keywordCacheService.get('keywords', keyword, 'global');
         if (cachedData) {
             return this.formatKeywordResponse(cachedData)
         }
@@ -440,7 +440,7 @@ export class SEMrushService {
         const tableData = this.formatKeywordTableData(parsedData, userId)
 
         // Store in cache
-        await cacheService.set('keywords', tableData, 36);
+        await keywordCacheService.set('keywords', tableData, 36);
         return parsedData;
     }
 
@@ -480,7 +480,7 @@ export class SEMrushService {
         }
 
         // Check cache first
-        const cachedData = await cacheService.get('keywords', keyword, database);
+        const cachedData = await keywordCacheService.get('keywords', keyword, database);
         if (!!cachedData?.related_keywords) {
             const cachedPageData = cachedData.related_keywords.filter((rk: any) => rk.page === page);
             if (cachedPageData.length > 0) {
@@ -501,7 +501,7 @@ export class SEMrushService {
         // Attach page to each keyword JSON
         const relatedWithPage = parsedData.map(data => ({ ...data, page }))
         // Store in cache
-        await cacheService.set('keywords', { ...cachedData, keyword, database, related_keywords: [...(cachedData?.related_keywords || []), ...relatedWithPage] }, 36);
+        await keywordCacheService.set('keywords', { ...cachedData, keyword, database, user_id : userId, related_keywords: [...(cachedData?.related_keywords || []), ...relatedWithPage] }, 36);
 
         return parsedData
     }
@@ -537,15 +537,7 @@ export class SEMrushService {
         const parsedData = this.transformBacklinkOverview(overviewData);
 
         // Store in cache
-        await backlinkCacheService.set({
-            table: 'backlink_cache',
-            user_id: userId,
-            domain,
-            dataType: 'overview',
-            databaseRegion: 'global',
-            data: parsedData,
-            ttlHours: 24
-        });
+        await backlinkCacheService.set('backlink_cache', { user_id: userId, domain, data_type: 'overview', database_region: 'global', data: parsedData }, 24);
 
         // If only profile requested, stop here
         if (onlyProfile) {
@@ -584,21 +576,15 @@ export class SEMrushService {
         const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'competitor_analysis', 'Backlinks_comparison', 5 * limit);
 
         const parsedData = this.transformBacklinkCometitorsData(csvData);
+
         // Store in cache
-        await backlinkCacheService.set({
-            table: 'competitor_backlink_cache',
-            user_id: userId,
-            domain,
-            dataType: 'Backlinks_comparison',
-            databaseRegion: 'global',
-            data: parsedData,
-            ttlHours: 6
-        });
+        await backlinkCacheService.set('competitor_backlink_cache', { user_id: userId, domain, data_type: 'Backlinks_comparison', database_region: 'global', data: parsedData }, 6);
+
         return parsedData;
     }
 
     // Get backlink analytics data (using domain backlinks overview as example)
-    async getBacklinks(domain: string, userId: string, limit: number = 30,
+    async getBacklinks(domain: string, userId: string, limit: number = 20,
         offset: number = 0): Promise<any> {
         const params: Record<string, string> = {
             type: 'backlinks',
@@ -621,22 +607,21 @@ export class SEMrushService {
             }
         }
         const creditsUsed = (limit / 100) * 3;
-        console.log('Calculated credits for backlinks:', creditsUsed);
+
         const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'backlink_analysis', 'Backlinks', creditsUsed);
 
         const parsedData = this.transformBacklinksData(csvData);
         // Attach page to each keyword JSON
         const backlinksWithPage = parsedData.map(data => ({ ...data, page }))
+
         // Store in cache
-        await backlinkCacheService.set({
-            table: 'backlink_cache',
+        await backlinkCacheService.set('backlink_cache', {
             user_id: userId,
             domain,
-            dataType: 'backlinks',
-            databaseRegion: 'global',
-            data: [...(cachedData?.data || []), ...backlinksWithPage],
-            ttlHours: 12
-        });
+            data_type: 'backlinks',
+            database_region: 'global',
+            data: [...(cachedData?.data || []), ...backlinksWithPage]
+        }, 12);
 
         return parsedData;
 
@@ -678,12 +663,6 @@ export class SEMrushService {
         };
 
         const project_id = await this.getProjectInfo(domain, userId);
-
-        // Check cache first
-        // const cachedData = await cacheService.get('keywords', keyword, 'global');
-        // if (cachedData) {
-        //     return this.formatKeywordResponse(cachedData)
-        // }
 
         const siteAuditData = await this.makeApiRequest(`/reports/v1/projects/${project_id}/siteaudit/info`, params, userId, 'seo_audits', 'siteaudit', 1);
 
@@ -744,10 +723,6 @@ export class SEMrushService {
 
         // const tableData = this.formatKeywordTableData(parsedData, userId)
 
-        // // Store in cache
-        // await cacheService.set('keywords', tableData, 36);
-        // return parsedData;
-        // return csvData;
     }
 
     // Transform domain overview response (CSV format)

@@ -17,14 +17,14 @@ interface BacklinkQuery extends ParsedQs {
 }
 
 export const getRelatedKeywordAnalysis = asyncHandler(async (req: Request, res: Response) => {
-    const { keyword, database, limit = "30", offset = "0" } = req.query as KeywordQuery;
+    const { keyword, database, limit = "20", offset = "0" } = req.query as KeywordQuery;
 
     if (!keyword) {
         throw new ApiError(400, `Keyword parameter is required`);
     }
 
     const userId = req.user!.id;
-    const numericLimit = Math.min(parseInt(limit, 10) || 30, 100);
+    const numericLimit = Math.min(parseInt(limit, 10) || 20, 100);
     const numericOffset = parseInt(offset, 10) || 0;
 
     const related = await semrushService.getRelatedKeywords(
@@ -128,10 +128,10 @@ export const getBacklinksAnalysis = asyncHandler(async (req: Request, res: Respo
         throw new ApiError(400, `Domain parameter is required`);
     }
 
-    const { limit = "30", offset = "0" } = req.query as BacklinkQuery;
+    const { limit = "20", offset = "0" } = req.query as BacklinkQuery;
 
     const userId = req.user!.id;
-    const numericLimit = Math.min(parseInt(limit, 10) || 30, 100);
+    const numericLimit = Math.min(parseInt(limit, 10) || 20, 100);
     const numericOffset = parseInt(offset, 10) || 0;
 
     const data = await semrushService.getBacklinks(domain, userId, numericLimit,
