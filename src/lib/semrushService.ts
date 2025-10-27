@@ -70,7 +70,30 @@ export interface Backlink {
     status: 'broken' | 'new' | 'lost' | 'active';
     type: 'form' | 'frame' | 'image' | 'nofollow' | 'dofollow' | 'sitewide' | 'text';
 }
-
+export interface ReferringDomain {
+    domain: string;
+    backlinksCount: number;
+    domainAuthority: number;
+    firstSeen: string;
+    lastSeen: string;
+    followLinks: number;
+    nofollowLinks: number;
+}
+export interface Prospect {
+    id: string;
+    domain: string;
+    url: string;
+    title?: string;
+    domainAuthority: number;
+    relevanceScore: number;
+    source: 'keywords' | 'competitors' | 'manual' | 'upload' | 'backlink-gap';
+    status: 'new' | 'in-progress' | 'contacted' | 'responded' | 'success' | 'rejected';
+    value: 'high' | 'medium' | 'low';
+    contact?: any | null;
+    notes?: string;
+    dateAdded: string;
+    lastUpdated: string;
+}
 export interface KeywordTableData {
     user_id: string;
     keyword: string;
@@ -501,7 +524,7 @@ export class SEMrushService {
         // Attach page to each keyword JSON
         const relatedWithPage = parsedData.map(data => ({ ...data, page }))
         // Store in cache
-        await keywordCacheService.set('keywords', { ...cachedData, keyword, database, user_id : userId, related_keywords: [...(cachedData?.related_keywords || []), ...relatedWithPage] }, 36);
+        await keywordCacheService.set('keywords', { ...cachedData, keyword, database, user_id: userId, related_keywords: [...(cachedData?.related_keywords || []), ...relatedWithPage] }, 36);
 
         return parsedData
     }
@@ -559,7 +582,7 @@ export class SEMrushService {
 
     // Get backlink competitor data
     async getBacklinkCompetitorsData(domain: string, userId: string, limit: number = 3,
-        offset: number = 0): Promise<any> {
+        offset: number = 0): Promise<BacklinkCometitorData[]> {
         const params: Record<string, string> = {
             type: 'backlinks_competitors',
             target: domain,
@@ -585,7 +608,7 @@ export class SEMrushService {
 
     // Get backlink analytics data (using domain backlinks overview as example)
     async getBacklinks(domain: string, userId: string, limit: number = 20,
-        offset: number = 0): Promise<any> {
+        offset: number = 0): Promise<Backlink[]> {
         const params: Record<string, string> = {
             type: 'backlinks',
             target: domain,
@@ -627,6 +650,147 @@ export class SEMrushService {
 
     }
 
+    // Get Backlinks Referring domains
+    async getReferringDomains(domain: string, userId: string, limit: number = 20,
+        offset: number = 0): Promise<ReferringDomain[]> {
+        const params: Record<string, string> = {
+            type: 'backlinks_refdomains',
+            target: domain,
+            target_type: 'root_domain',
+            export_columns: 'domain_ascore,domain_score,domain,backlinks_num,domain_trust_score,ip,country,first_seen,last_seen',
+            display_limit: limit.toString(),
+            display_offset: offset.toString()
+        };
+
+        const page = Math.floor(offset / limit) + 1; // calculate current page
+        // Check cache first
+        const cachedData = await backlinkCacheService.get('backlink_cache', domain, 'backlinks_refdomains', 'global');
+
+        if (cachedData) {
+            const backlinks = cachedData.data.filter((bk: any) => bk.page === page);;
+            if (backlinks.length > 0) {
+                return backlinks;
+            }
+        }
+        const creditsUsed = (limit / 100) * 2;
+
+        const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'backlink_analysis', 'backlinks_refdomains', creditsUsed);
+
+        const parsedData = this.transformBacklinksData(csvData);
+
+        // Attach page to each keyword JSON
+        const backlinksWithPage = parsedData.map(data => ({ ...data, page }))
+
+        // Store in cache
+        await backlinkCacheService.set('backlink_cache', {
+            user_id: userId,
+            domain,
+            data_type: 'referring_domains',
+            database_region: 'global',
+            data: [...(cachedData?.data || []), ...backlinksWithPage]
+        }, 12);
+
+        return parsedData;
+
+    }
+
+    // Get backlink gap analysis 
+    async getBacklinkGap(
+        targetDomain: string,
+        competitors: string[],
+        //   competitorDomain: string, 
+        userId: string,
+        limit: number = 100,
+        offset: number = 0
+    ): Promise<{ total: number; prospects: Prospect[] }> {
+        const now = new Date().toISOString();
+        const page = Math.floor(offset / limit) + 1;
+
+        // 1) Fetch your own referring domains (use caching inside getReferringDomains)
+        const yourRefs = await this.getReferringDomains(targetDomain, userId, limit, offset);
+        const yourRefSet = new Set(yourRefs.map(r => r.domain));
+
+        // 2) For each competitor, fetch their referring domains (reuse getReferringDomains)
+        //    We'll fetch in series to make credit usage predictable; you can parallelize if you want.
+        let allCompetitorRefs: ReferringDomain[] = [];
+
+        for (const comp of competitors) {
+            const compRefs = await this.getReferringDomains(comp, userId, limit, offset);
+            // attach source info on each ref (optional)
+            const annotated = compRefs.map(r => ({ ...r, _sourceCompetitor: comp }));
+            allCompetitorRefs.push(...annotated);
+        }
+
+        // 3) Merge and deduplicate competitor referring domains by domain
+        const dedupedMap = new Map<string, ReferringDomain>();
+        for (const r of allCompetitorRefs) {
+            const key = r.domain.toLowerCase();
+            if (!dedupedMap.has(key)) dedupedMap.set(key, r);
+            else {
+                // optional: merge metrics (keep max ascore/backlinks)
+                const existing = dedupedMap.get(key)!;
+                existing.domain_ascore = Math.max(Number(existing.domain_ascore || 0), Number(r.domain_ascore || 0));
+                existing.backlinks_num = Math.max(Number(existing.backlinks_num || 0), Number(r.backlinks_num || 0));
+                // keep a list of source competitors (if you want)
+                (existing as any)._sources = Array.from(new Set([...(existing as any)._sources || [], (r as any)._sourceCompetitor]));
+            }
+        }
+
+        // 4) Filter out domains that already link to you → these are NOT prospects
+        const possibleProspects: ReferringDomain[] = [];
+        for (const [domainKey, ref] of dedupedMap) {
+            if (!yourRefSet.has(ref.domain)) possibleProspects.push(ref);
+        }
+
+        // 5) Map to your Prospect structure
+        const prospects: Prospect[] = possibleProspects.map((r, idx) => {
+            const ascore = Number(r.domain_ascore || r.domain_score || 0);
+            const relevance = Math.min(100, Math.round(ascore + (Math.random() * 10))); // you can replace with a real relevance calc
+
+            const prospect: Prospect = {
+                id: `prospect-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${idx}`,
+                domain: r.domain,
+                url: `https://${r.domain}`,
+                title: "",
+                domainAuthority: ascore,
+                relevanceScore: relevance,
+                source: "competitors",
+                status: "new",
+                value: ascore > 70 ? "high" : ascore > 50 ? "medium" : "low",
+                contact: null,
+                notes: "",
+                dateAdded: now,
+                lastUpdated: now,
+                page
+            };
+
+            // if you kept _sources during dedupe, attach as note or metadata
+            if ((r as any)._sources) {
+                prospect.notes = `Links to competitors: ${(r as any)._sources.join(", ")}`;
+            }
+
+            return prospect;
+        });
+
+        // 6) Optional: mark prospects that are actually internal / already partners as "existing"
+        //    (If you want to mark those linking to you - but we filtered them out already above.)
+
+        // 7) Cache gap results (re-using your cache service)
+        await backlinkCacheService.set(
+            "backlink_cache",
+            {
+                user_id: userId,
+                domain: yourDomain,
+                data_type: "backlinks_gap",
+                database_region: "global",
+                data: [...((await backlinkCacheService.get("backlink_cache", yourDomain, "backlinks_gap", "global"))?.data || []), ...prospects]
+            },
+            12 // hours TTL
+        );
+
+        return { total: prospects.length, prospects };
+    }
+    
     // Get project info for domain audit data
     async getProjectInfo(domain: string, userId: string): Promise<string> {
         const projects = await this.makeApiRequest(`/management/v1/projects`, {}, userId, 'projects', 'siteaudit', 1);
@@ -878,6 +1042,39 @@ export class SEMrushService {
             }
         }
         return backlinks;
+    }
+
+    // Transform Referring domain data response (CSV format)
+    private transformReferringDomainsData(csvData: string): ReferringDomain[] {
+        const lines = csvData.trim().split('\n');
+        if (lines.length < 2) {
+            throw new SEMrushError('Invalid CSV response from SEMrush');
+        }
+
+        const ReferringDomains: ReferringDomain[] = [];
+
+        // Process all backlink entries (skip header)
+        for (let i = 1; i < lines.length; i++) {
+            const parts = lines[i].split(';');
+            if (parts.length >= 10) {
+
+                ReferringDomains.push({
+                    id: `${sourceDomain}-${sourceUrl.length}`,
+                    sourceDomain,
+                    sourceUrl,
+                    targetUrl: parts[1] || '',
+                    anchorText: parts[2] || '',
+                    doFollow: !this.isTrue(parts[3]),
+                    domainAuthority: 0,
+                    pageAuthority: parseInt(parts[4] || '0', 10),
+                    firstSeen: formatDate(parts[5]),
+                    lastSeen: formatDate(parts[6]),
+                    status,
+                    type
+                });
+            }
+        }
+        return ReferringDomains;
     }
 
     // Transform backlink competitor data response (CSV format)
