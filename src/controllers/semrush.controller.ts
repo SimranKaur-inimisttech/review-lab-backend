@@ -16,6 +16,12 @@ interface BacklinkQuery extends ParsedQs {
     offset?: string;
 }
 
+interface BacklinkGapQuery extends ParsedQs {
+    targetDomain: string;
+    competitors: string | string[];
+    limit?: string;
+    offset?: string;
+}
 export const getRelatedKeywordAnalysis = asyncHandler(async (req: Request, res: Response) => {
     const { keyword, database, limit = "20", offset = "0" } = req.query as KeywordQuery;
 
@@ -151,4 +157,38 @@ export const getBacklinksAnalysis = asyncHandler(async (req: Request, res: Respo
         hasMore: data.length === numericLimit,
         backlinks: data
     }, "Backlink data fetched successfully"));
+});
+
+export const getBacklinkGapAnalysis = asyncHandler(async (req: Request, res: Response) => {
+    const { targetDomain, competitors = [], limit = "20", offset = "0" } = req.query as BacklinkGapQuery;
+
+    const competitorList = Array.isArray(competitors)
+    ? competitors
+    : competitors.split(",").map(c => c.trim());
+
+    if (!targetDomain || !competitors?.length) {
+        throw new ApiError(400, `Domain and competitors domain is required`);
+    }
+
+    const userId = req.user!.id;
+    const numericLimit = Math.min(parseInt(limit, 10) || 20, 100);
+    const numericOffset = parseInt(offset, 10) || 0;
+
+    const data = await semrushService.getBacklinkGap(targetDomain, competitorList, userId, numericLimit, numericOffset);
+    console.log("datata",data);
+
+    const totalAvailable = numericOffset + data.length + (data.length === numericLimit ? numericLimit : 0);
+
+    res.status(200).json(new ApiResponse(200, {
+        domain: targetDomain.trim(),
+        totalResults: data.length,
+        totalAvailable,
+        currentPage: {
+            offset: numericOffset,
+            limit: numericLimit,
+            count: data.length
+        },
+        hasMore: data.length === numericLimit,
+        prospects: data
+    }, "Prospect data fetched successfully"));
 });

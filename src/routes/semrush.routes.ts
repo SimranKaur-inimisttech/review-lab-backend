@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getBacklinkOverviewAnalysis, getBacklinksAnalysis, getCompetitorsBacklinkAnalysis, getCountryKeywordAnalysis, getGlobalKeywordAnalysis, getRelatedKeywordAnalysis, getWebsiteAuditdAnalysis } from "@/controllers/semrush.controller";
+import { getBacklinkGapAnalysis, getBacklinkOverviewAnalysis, getBacklinksAnalysis, getCompetitorsBacklinkAnalysis, getCountryKeywordAnalysis, getGlobalKeywordAnalysis, getRelatedKeywordAnalysis, getWebsiteAuditdAnalysis } from "@/controllers/semrush.controller";
 
 const router = Router();
 
@@ -10,6 +10,6 @@ router.route('/audit/:domain').get(getWebsiteAuditdAnalysis);
 router.route('/backlink/overview/:domain').get(getBacklinkOverviewAnalysis);
 router.route('/backlink/competitors/:domain').get(getCompetitorsBacklinkAnalysis);
 router.route('/backlinks/:domain').get(getBacklinksAnalysis);
-
+router.route('/backlink/gap').get(getBacklinkGapAnalysis);
 
 export default router;
