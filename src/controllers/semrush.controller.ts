@@ -125,7 +125,7 @@ export const getCompetitorsBacklinkAnalysis = asyncHandler(async (req: Request, 
 
     const data = await semrushService.getBacklinkCompetitorsData(domain, userId);
 
-    res.status(200).json(new ApiResponse(200, data, "Backlink data fetched successfully"));
+    res.status(200).json(new ApiResponse(200, data, "Competitors data fetched successfully"));
 });
 
 export const getBacklinksAnalysis = asyncHandler(async (req: Request, res: Response) => {

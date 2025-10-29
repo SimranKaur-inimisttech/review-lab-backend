@@ -315,12 +315,9 @@ export class SEMrushService {
                 userId, apiEndpoint, requestType, 'success', creditsRequired,
                 params.domain || params.target, params.phrase
             );
-            //             return `domain_ascore;domain;backlinks_num;ip;country;first_seen;last_seen
-            // 5;seooptimizationdirectory.com;2134;103.243.170.2;nz;1735697975;1761625305
-            // 6;addirectory.org;1158;107.161.23.26;us;1735747664;1761607897
-            // `
+
             return response.data;
-            /*if (requestType == 'Backlinks_overview') {
+            if (requestType == 'Backlinks_overview') {
                 return `ascore;total;domains_num;urls_num;follows_num;nofollows_num
                               74;22063983;49145;13059030;47793;22956`;
             } else if (requestType == 'Backlinks_comparison') {
@@ -344,7 +341,12 @@ export class SEMrushService {
                     http://universaldependencies.org/conll17/;http://yourdomain.com/conll17/;;false;81;1684464406;1750211596;200;false;true;false;false;false;false
                     http://universaldependencies.org/conll17/;https://yourdomain.com/conll17/;;false;81;1755114370;1755114370;200;false;false;false;false;false;false`
                 }
-            }*/
+            }
+            // else if (requestType == 'backlinks_refdomains') {
+            //     return `domain_ascore;domain;backlinks_num;ip;country;first_seen;last_seen
+            // 5;seooptimizationdirectory.com;2134;103.243.170.2;nz;1735697975;1761625305
+            // 6;addirectory.org;1158;107.161.23.26;us;1735747664;1761607897`
+            // }
         } catch (error: any) {
             if (axios.isAxiosError(error) && error.response) {
                 const status = error.response.status;
@@ -709,15 +711,17 @@ export class SEMrushService {
         const now = new Date().toISOString();
         const page = Math.floor(offset / limit) + 1;
 
+        const perCompetitorLimit = Math.ceil(limit / competitors.length);
+
         // Get your referring domains
-        const yourRefDomains = await this.getReferringDomains(targetDomain, userId, limit, offset);
+        const yourRefDomains = await this.getReferringDomains(targetDomain, userId, perCompetitorLimit, offset);
         const yourRefDomainsSet = new Set(yourRefDomains.map(r => r.domain));
 
         // Get all competitor referring domains
         let allCompetitorRefs: ReferringDomain[] = [];
 
         for (const comp of competitors) {
-            const compRefs = await this.getReferringDomains(comp, userId, limit, offset);
+            const compRefs = await this.getReferringDomains(comp, userId, perCompetitorLimit, offset);
             allCompetitorRefs.push(...compRefs);
         }
 
