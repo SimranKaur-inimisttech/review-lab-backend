@@ -758,7 +758,7 @@ export class SEMrushService {
 
     // Get project info for domain audit data
     async getProjectInfo(domain: string, userId: string): Promise<string> {
-        const projects = await this.makeApiRequest(`/management/v1/projects`, {}, userId, 'projects', 'siteaudit', 1);
+        const projects = await this.makeApiRequest(`/management/v1/projects`, {}, userId, 'website_audit', 'projects', 1);
 
         const project = projects.find((p: any) => p.url === domain);
         return project.project_id;
@@ -793,8 +793,7 @@ export class SEMrushService {
 
         const project_id = await this.getProjectInfo(domain, userId);
 
-        const siteAuditData = await this.makeApiRequest(`/reports/v1/projects/${project_id}/siteaudit/info`, params, userId, 'seo_audits', 'siteaudit', 1);
-
+        const siteAuditData = await this.makeApiRequest(`/reports/v1/projects/${project_id}/siteaudit/info`, params, userId, 'website_audit', 'siteaudit', 1);
         const qualityScore = siteAuditData.current_snapshot.quality?.value ?? 0;
         const qualityGrade = this.getGrade(qualityScore);
         const scoreBreakdown = this.getScoreBreakdown(siteAuditData?.current_snapshot?.thematicScores || {});
@@ -812,6 +811,66 @@ export class SEMrushService {
                     category: "On-Page SEO",
                     priority: "High",
                     solution: "Add a meta description tag to your HTML that summarizes page content in 150-160 characters."
+                },
+                {
+                    issue: "Implement a redirect to HTTPS on your website",
+                    category: "On-Page SEO",
+                    priority: "Medium",
+                    solution: "Configure your server to automatically redirect HTTP traffic to HTTPS for better security."
+                },
+                {
+                    issue: "Implement a XML sitemaps file",
+                    category: "On-Page SEO",
+                    priority: "Medium",
+                    solution: "Create and submit an XML sitemap to help search engines discover and index your pages."
+                },
+                {
+                    issue: "Implement a robots.txt file",
+                    category: "On-Page SEO",
+                    priority: "Medium",
+                    solution: "Add a robots.txt file to guide search engine crawlers on which pages to index."
+                },
+                {
+                    issue: "Increase length of title tag",
+                    category: "On-Page SEO",
+                    priority: "Medium",
+                    solution: "Expand your title tag to 50-60 characters for better SEO performance."
+                },
+                {
+                    issue: "Add Canonical Tag",
+                    category: "On-Page SEO",
+                    priority: "Medium",
+                    solution: "Use canonical tags to prevent duplicate content issues and consolidate ranking signals."
+                },
+                {
+                    issue: "Make greater use of header tags",
+                    category: "On-Page SEO",
+                    priority: "Medium",
+                    solution: "Structure your content with H1-H6 tags to improve readability and SEO."
+                },
+                {
+                    issue: "Use your main keywords across the important HTML tags",
+                    category: "On-Page SEO",
+                    priority: "Low",
+                    solution: "Include target keywords in title, headings, meta description, and alt text."
+                },
+                {
+                    issue: "Increase page text content",
+                    category: "On-Page SEO",
+                    priority: "Low",
+                    solution: "Add more comprehensive content to your pages (aim for at least 300 words per page)."
+                },
+                {
+                    issue: "Add lang attribute",
+                    category: "On-Page SEO",
+                    priority: "Low",
+                    solution: "Specify the language of your content using the lang attribute in the HTML tag."
+                },
+                {
+                    issue: "Implement an analytics tracking tool",
+                    category: "On-Page SEO",
+                    priority: "Low",
+                    solution: "Install Google Analytics or similar tool to track user behavior and page performance."
                 },
                 {
                     issue: "Add a favicon",
