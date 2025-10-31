@@ -3,6 +3,7 @@ import { keywordCacheService } from './keywordCacheService';
 import axios, { AxiosResponse } from 'axios';
 import { capitalizeFirst, formatDate } from '@/utils/helpers';
 import { backlinkCacheService } from './backlinkCacheService';
+import * as cheerio from 'cheerio';
 
 // =============================================================================
 // SIMPLIFIED SEMRUSH API SERVICE - FUNCTIONAL VERSION
@@ -25,6 +26,11 @@ export interface KeywordData {
     competition: number;
     competitionLevel: 'low' | 'medium' | 'high';
     database?: string; // Add database info
+}
+interface KBMapping {
+    category: string;
+    severity: 'Error' | 'Warning' | 'Notice';
+    solution: string;
 }
 
 export interface RelatedKeyword {
@@ -288,7 +294,7 @@ export class SEMrushService {
         method: 'GET' | 'POST' = 'GET'
     ): Promise<any> {
         // Only check quota if cache is empty
-        await this.checkQuota(userId, apiEndpoint, creditsRequired);
+        // await this.checkQuota(userId, apiEndpoint, creditsRequired);
 
         const url = new URL(endPoint, this.baseUrl);
         url.searchParams.append('key', this.apiKey);
@@ -304,18 +310,18 @@ export class SEMrushService {
         try {
             let response: AxiosResponse;
             console.log('semrush request ====>', url.toString());
-            if (method === 'POST') {
-                response = await axios.post(url.toString());
-            } else {
-                response = await axios.get(url.toString());
-            }
+            // if (method === 'POST') {
+            //     response = await axios.post(url.toString());
+            // } else {
+            //     response = await axios.get(url.toString());
+            // }
 
             // Success logging
             await this.logUsage(
                 userId, apiEndpoint, requestType, 'success', creditsRequired,
                 params.domain || params.target, params.phrase
             );
-
+            return ''
             return response.data;
             if (requestType == 'Backlinks_overview') {
                 return `ascore;total;domains_num;urls_num;follows_num;nofollows_num
@@ -790,6 +796,72 @@ export class SEMrushService {
         const params: Record<string, string> = {
             domain
         };
+
+        const { data: html } = await axios.get('https://www.semrush.com/kb/542-site-audit-issues-list');
+        const $ = cheerio.load(html);
+        const mapping: Record<number, KBMapping> = {};
+
+        $('h2').each((i, h2) => {
+            const category = $(h2).text().trim(); // e.g., "Errors"
+            console.log("h2 ===>", category);
+
+            // Traverse siblings after h2 until next h2
+            let next = $(h2).next();
+
+            while (next.length && next[0].name !== 'h2') {
+                if (next[0].name === 'h3') {
+                    const titleElement = $(next).text().trim(); // If h3 has the title, use this; otherwise, adjust
+                    const issueDataElement = next.next();
+                    const issueData = $(issueDataElement).text(); // Get the full text after h3
+                    console.log("issueData ===>", issueData);
+
+                    // Parse the issueData string to extract title, solution (skipping description)
+                    const lines = issueData.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+
+                    let extractedTitle = titleElement; // Fallback to h3 text if present
+                    let solution = '';
+                    let remainingLines: string[] = [];
+
+                    if (lines.length > 0) {
+                        // If the first line of issueData looks like a title (not "About the issue"), use it
+                        if (!lines[0].startsWith('About the issue')) {
+                            extractedTitle = lines[0];
+                            // Remove first line for further processing
+                            remainingLines = lines.slice(1);
+                        } else {
+                            remainingLines = lines;
+                        }
+
+                        // Skip to find "How to fix it" directly
+                        let fixIndex = remainingLines.findIndex(line => line.startsWith('How to fix it'));
+                        if (fixIndex !== -1) {
+                            // Solution: lines after "How to fix it"
+                            solution = remainingLines.slice(fixIndex + 1).join(' ');
+                        }
+                    }
+
+                    // Clean solution: remove "How to fix it" if any residue, make imperative
+                    solution = solution.replace(/^How to fix it\s*:?\s*/i, '').trim();
+                    if (solution && !solution.startsWith('Fix') && !solution.startsWith('Add') && !solution.startsWith('Implement')) {
+                        solution = `Fix ${extractedTitle.toLowerCase()}: ${solution}`;
+                    }
+
+                    // Truncate solution
+                    if (solution.length > 200) {
+                        solution = solution.substring(0, 200) + '...';
+                    }
+
+                    console.log("Extracted Title ===>", extractedTitle);
+                    console.log("Solution ===>", solution);
+
+                    // Add to mapping (assuming you have mapping object)
+                    mapping[extractedTitle] = { category, solution };
+
+                }
+                next = next.next();
+            }
+        });
+        console.log("mapping ===>", mapping);
 
         const project_id = await this.getProjectInfo(domain, userId);
 
