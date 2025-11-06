@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/config/supabaseAdmin';
 import { keywordCacheService } from './keywordCacheService';
 import axios, { AxiosResponse } from 'axios';
-import { capitalizeFirst, formatDate } from '@/utils/helpers';
+import { capitalizeFirst, extractProjectName, formatDate } from '@/utils/helpers';
 import { backlinkCacheService } from './backlinkCacheService';
 import * as cheerio from 'cheerio';
 
@@ -291,7 +291,8 @@ export class SEMrushService {
         apiEndpoint: string,
         requestType: string,
         creditsRequired: number = 1,
-        method: 'GET' | 'POST' = 'GET'
+        method: 'GET' | 'POST' = 'GET',
+        body?: Record<string, any>
     ): Promise<any> {
         // Only check quota if cache is empty
         // await this.checkQuota(userId, apiEndpoint, creditsRequired);
@@ -310,18 +311,18 @@ export class SEMrushService {
         try {
             let response: AxiosResponse;
             console.log('semrush request ====>', url.toString());
-            // if (method === 'POST') {
-            //     response = await axios.post(url.toString());
-            // } else {
-            //     response = await axios.get(url.toString());
-            // }
+            if (method === 'POST') {
+                response = await axios.post(url.toString(), body || {});
+            } else {
+                response = await axios.get(url.toString());
+            }
 
             // Success logging
             await this.logUsage(
                 userId, apiEndpoint, requestType, 'success', creditsRequired,
                 params.domain || params.target, params.phrase
             );
-            return ''
+            // return ''
             return response.data;
             if (requestType == 'Backlinks_overview') {
                 return `ascore;total;domains_num;urls_num;follows_num;nofollows_num
@@ -762,11 +763,26 @@ export class SEMrushService {
         return prospects;
     }
 
-    // Get project info for domain audit data
-    async getProjectInfo(domain: string, userId: string): Promise<string> {
+
+    // Get project id for domain
+    async getProject(domain: string, userId: string): Promise<string> {
         const projects = await this.makeApiRequest(`/management/v1/projects`, {}, userId, 'website_audit', 'projects', 1);
 
         const project = projects.find((p: any) => p.url === domain);
+        return project.project_id;
+    }
+
+    // Create project for domain
+    async createProject(domain: string, userId: string): Promise<string> {
+
+        const projectName = extractProjectName(domain);
+
+        const project = await this.makeApiRequest(`/management/v1/projects`, {}, userId, 'website_audit', 'projects', 1, 'POST', {
+            ...(projectName ? { project_name: projectName } : {}),
+            url: domain
+        });
+        console.log("Created project ===>", project);
+
         return project.project_id;
     }
 
@@ -797,73 +813,73 @@ export class SEMrushService {
             domain
         };
 
-        const { data: html } = await axios.get('https://www.semrush.com/kb/542-site-audit-issues-list');
-        const $ = cheerio.load(html);
-        const mapping: Record<number, KBMapping> = {};
+        // const { data: html } = await axios.get('https://www.semrush.com/kb/542-site-audit-issues-list');
+        // const $ = cheerio.load(html);
+        // const mapping: Record<number, KBMapping> = {};
 
-        $('h2').each((i, h2) => {
-            const category = $(h2).text().trim(); // e.g., "Errors"
-            console.log("h2 ===>", category);
+        // $('h2').each((i, h2) => {
+        //     const category = $(h2).text().trim(); // e.g., "Errors"
+        //     console.log("h2 ===>", category);
 
-            // Traverse siblings after h2 until next h2
-            let next = $(h2).next();
+        //     // Traverse siblings after h2 until next h2
+        //     let next = $(h2).next();
 
-            while (next.length && next[0].name !== 'h2') {
-                if (next[0].name === 'h3') {
-                    const titleElement = $(next).text().trim(); // If h3 has the title, use this; otherwise, adjust
-                    const issueDataElement = next.next();
-                    const issueData = $(issueDataElement).text(); // Get the full text after h3
-                    console.log("issueData ===>", issueData);
+        //     while (next.length && next[0].name !== 'h2') {
+        //         if (next[0].name === 'h3') {
+        //             const titleElement = $(next).text().trim(); // If h3 has the title, use this; otherwise, adjust
+        //             const issueDataElement = next.next();
+        //             const issueData = $(issueDataElement).text(); // Get the full text after h3
+        //             console.log("issueData ===>", issueData);
 
-                    // Parse the issueData string to extract title, solution (skipping description)
-                    const lines = issueData.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+        //             // Parse the issueData string to extract title, solution (skipping description)
+        //             const lines = issueData.split('\n').map(line => line.trim()).filter(line => line.length > 0);
 
-                    let extractedTitle = titleElement; // Fallback to h3 text if present
-                    let solution = '';
-                    let remainingLines: string[] = [];
+        //             let extractedTitle = titleElement; // Fallback to h3 text if present
+        //             let solution = '';
+        //             let remainingLines: string[] = [];
 
-                    if (lines.length > 0) {
-                        // If the first line of issueData looks like a title (not "About the issue"), use it
-                        if (!lines[0].startsWith('About the issue')) {
-                            extractedTitle = lines[0];
-                            // Remove first line for further processing
-                            remainingLines = lines.slice(1);
-                        } else {
-                            remainingLines = lines;
-                        }
+        //             if (lines.length > 0) {
+        //                 // If the first line of issueData looks like a title (not "About the issue"), use it
+        //                 if (!lines[0].startsWith('About the issue')) {
+        //                     extractedTitle = lines[0];
+        //                     // Remove first line for further processing
+        //                     remainingLines = lines.slice(1);
+        //                 } else {
+        //                     remainingLines = lines;
+        //                 }
 
-                        // Skip to find "How to fix it" directly
-                        let fixIndex = remainingLines.findIndex(line => line.startsWith('How to fix it'));
-                        if (fixIndex !== -1) {
-                            // Solution: lines after "How to fix it"
-                            solution = remainingLines.slice(fixIndex + 1).join(' ');
-                        }
-                    }
+        //                 // Skip to find "How to fix it" directly
+        //                 let fixIndex = remainingLines.findIndex(line => line.startsWith('How to fix it'));
+        //                 if (fixIndex !== -1) {
+        //                     // Solution: lines after "How to fix it"
+        //                     solution = remainingLines.slice(fixIndex + 1).join(' ');
+        //                 }
+        //             }
 
-                    // Clean solution: remove "How to fix it" if any residue, make imperative
-                    solution = solution.replace(/^How to fix it\s*:?\s*/i, '').trim();
-                    if (solution && !solution.startsWith('Fix') && !solution.startsWith('Add') && !solution.startsWith('Implement')) {
-                        solution = `Fix ${extractedTitle.toLowerCase()}: ${solution}`;
-                    }
+        //             // Clean solution: remove "How to fix it" if any residue, make imperative
+        //             solution = solution.replace(/^How to fix it\s*:?\s*/i, '').trim();
+        //             if (solution && !solution.startsWith('Fix') && !solution.startsWith('Add') && !solution.startsWith('Implement')) {
+        //                 solution = `Fix ${extractedTitle.toLowerCase()}: ${solution}`;
+        //             }
 
-                    // Truncate solution
-                    if (solution.length > 200) {
-                        solution = solution.substring(0, 200) + '...';
-                    }
+        //             // Truncate solution
+        //             if (solution.length > 200) {
+        //                 solution = solution.substring(0, 200) + '...';
+        //             }
 
-                    console.log("Extracted Title ===>", extractedTitle);
-                    console.log("Solution ===>", solution);
+        //             console.log("Extracted Title ===>", extractedTitle);
+        //             console.log("Solution ===>", solution);
 
-                    // Add to mapping (assuming you have mapping object)
-                    mapping[extractedTitle] = { category, solution };
+        //             // Add to mapping (assuming you have mapping object)
+        //             mapping[extractedTitle] = { category, solution };
 
-                }
-                next = next.next();
-            }
-        });
-        console.log("mapping ===>", mapping);
+        //         }
+        //         next = next.next();
+        //     }
+        // });
+        // console.log("mapping ===>", mapping);
 
-        const project_id = await this.getProjectInfo(domain, userId);
+        const project_id = await this.getProject(domain, userId);
 
         const siteAuditData = await this.makeApiRequest(`/reports/v1/projects/${project_id}/siteaudit/info`, params, userId, 'website_audit', 'siteaudit', 1);
         const qualityScore = siteAuditData.current_snapshot.quality?.value ?? 0;
@@ -982,6 +998,71 @@ export class SEMrushService {
         // const parsedData = this.transformGlobalKeywordData(csv Data);
 
         // const tableData = this.formatKeywordTableData(parsedData, userId)
+
+    }
+
+    // Create project for domain
+    async createProject(domain: string, userId: string): Promise<string> {
+
+        const projectName = extractProjectName(domain);
+
+        const project = await this.makeApiRequest(`/management/v1/projects`, {}, userId, 'website_audit', 'projects', 1, 'POST', {
+            ...(projectName ? { project_name: projectName } : {}),
+            url: domain
+        });
+        console.log("Created project ===>", project);
+
+        return project.project_id;
+    }
+
+    // Get backlink analytics data (using domain backlinks overview as example)
+    async getPositionTracking(domain: string, userId: string, limit: number = 20,
+        offset: number = 0): Promise<Backlink[]> {
+        const params: Record<string, string> = {
+            // type: 'backlinks',
+            // target: domain,
+            // target_type: 'root_domain',
+            // export_columns: 'source_url,target_url,anchor,nofollow,page_ascore,first_seen,last_seen,response_code,newlink,lostlink,form,frame,image,sitewide',
+            // display_limit: limit.toString(),
+            // display_offset: offset.toString()
+        };
+
+        const page = Math.floor(offset / limit) + 1; // calculate current page
+
+        // Check cache first
+        // const cachedData = await backlinkCacheService.get('backlink_cache', domain, 'backlinks', 'global');
+
+        // if (cachedData) {
+        //     const backlinks = cachedData.data.filter((bk: any) => bk.page === page);;
+        //     if (backlinks.length > 0) {
+        //         return backlinks;
+        //     }
+        // }
+
+        let project_id :string = await this.getProject(domain, userId);
+
+        if (!project_id) {
+            project_id = await this.createProject(domain, userId);
+        }
+
+        const creditsUsed = (limit / 100) * 3;
+
+        const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'backlink_analysis', 'Backlinks', creditsUsed);
+
+        const parsedData = this.transformBacklinksData(csvData);
+        // Attach page to each keyword JSON
+        const backlinksWithPage = parsedData.map(data => ({ ...data, page }))
+
+        // Store in cache
+        await backlinkCacheService.set('backlink_cache', {
+            user_id: userId,
+            domain,
+            data_type: 'backlinks',
+            database_region: 'global',
+            data: [...(cachedData?.data || []), ...backlinksWithPage]
+        }, 12);
+
+        return parsedData;
 
     }
 

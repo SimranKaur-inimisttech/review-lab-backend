@@ -41,7 +41,43 @@ export function capitalizeFirst(str: string) {
 
 // Formats a UNIX timestamp (in seconds) to YYYY-MM-DD
 export function formatDate(timestamp: string): string {
-    if (!timestamp) return '';
-    const date = new Date(parseInt(timestamp, 10) * 1000); // convert seconds to ms
-    return date.toISOString().split('T')[0]; // YYYY-MM-DD
+  if (!timestamp) return '';
+  const date = new Date(parseInt(timestamp, 10) * 1000); // convert seconds to ms
+  return date.toISOString().split('T')[0]; // YYYY-MM-DD
+}
+
+export function extractProjectName(domain: string): string {
+  // Remove protocol (http, https, etc.)
+  domain = domain.replace(/(^\w+:|^)\/\//, '');
+
+  // Remove 'www.' prefix
+  domain = domain.replace(/^www\./, '');
+
+  // Remove any path or query (e.g., /path?param)
+  domain = domain.split('/')[0].split('?')[0];
+
+  const parts = domain.split('.');
+
+  let mainPart = '';
+  if (parts.length >= 3) {
+    // Handle country TLDs like .com.au, .co.uk, etc.
+    const tlds = ['com', 'co', 'net', 'org'];
+    const secondLast = parts[parts.length - 2];
+    const thirdLast = parts[parts.length - 3];
+
+    mainPart = tlds.includes(secondLast) ? thirdLast : secondLast;
+  } else if (parts.length === 2) {
+    mainPart = parts[0]; // example.com
+  } else {
+    mainPart = domain;
+  }
+
+  const cleanName = mainPart
+    .replace(/[-_]/g, ' ') // replace hyphens/underscores with spaces
+    .replace(/\d+/g, '') // remove numbers
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase()); // capitalize first letters
+
+  return cleanName || '';
+
 }
