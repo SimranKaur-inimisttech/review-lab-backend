@@ -1015,55 +1015,127 @@ export class SEMrushService {
         return project.project_id;
     }
 
-    // Get backlink analytics data (using domain backlinks overview as example)
-    async getPositionTracking(domain: string, userId: string, limit: number = 20,
-        offset: number = 0): Promise<Backlink[]> {
-        const params: Record<string, string> = {
-            // type: 'backlinks',
-            // target: domain,
-            // target_type: 'root_domain',
-            // export_columns: 'source_url,target_url,anchor,nofollow,page_ascore,first_seen,last_seen,response_code,newlink,lostlink,form,frame,image,sitewide',
-            // display_limit: limit.toString(),
-            // display_offset: offset.toString()
-        };
+    // Check if tracking is enabled (only for existing projects)
+    private async isPositionTrackingEnabled(project_id: string, userId: string): Promise<boolean> {
+        const campaignsResponse = await this.makeApiRequest(
+            `/management/v1/projects/${project_id}/tracking/campaigns`,
+            {},
+            userId,
+            'tracking_check',
+            'Check Campaigns',
+            1
+        );
 
-        const page = Math.floor(offset / limit) + 1; // calculate current page
+        const campaigns = campaignsResponse.campaigns || [];
+        if (campaigns.length === 0) {
+            return false;
+        }
 
-        // Check cache first
-        // const cachedData = await backlinkCacheService.get('backlink_cache', domain, 'backlinks', 'global');
+        const mainCampaign = campaigns[0];  // Primary campaign
+        return mainCampaign.keywords_count > 0 && !mainCampaign.isGathering;
+    }
 
-        // if (cachedData) {
-        //     const backlinks = cachedData.data.filter((bk: any) => bk.page === page);;
-        //     if (backlinks.length > 0) {
-        //         return backlinks;
-        //     }
-        // }
+    // Enable Position tracking for project
+    private async enablePositionTracking(project_id: string, userId: string, enablePayload: Record<string, any>): Promise<boolean> {
+        await this.makeApiRequest(
+            `/management/v1/projects/${project_id}/tracking/enable`,
+            {},
+            userId,
+            'position_enable',
+            'Enable Tracking',
+            1,
+            'POST',
+            enablePayload
+        );
+        return true;
+    }
 
-        let project_id :string = await this.getProject(domain, userId);
+    // Get position tracking data
+    async getPositionTracking(
+        domain: string,
+        userId: string,
+        limit: number = 20,
+        offset: number = 0,
+        keywords?: string[]  // Optional: keywords to add if campaign empty
+    ): Promise<PositionTracking[]> {  // Assume interface: { keyword: string, position: number, traffic: number, ... }
+        const page = Math.floor(offset / limit) + 1;
+
+        // Check cache first (stub—adapt to your cache service)
+        // const cachedData = await positionCacheService.get('position_cache', domain, 'organic', 'global');
+        // if (cachedData && cachedData.page === page) return cachedData.data;
+
+        let project_id: string = await this.getProject(domain, userId);
+        let wasProjectCreated = false;
 
         if (!project_id) {
             project_id = await this.createProject(domain, userId);
+            wasProjectCreated = true;  // Set flag if your createProject indicates new
         }
 
-        const creditsUsed = (limit / 100) * 3;
+        // Step 1: Check if tracking is enabled (skip for newly created, as it's obviously not)
+        let isTrackingEnabled = false;
+        if (!wasProjectCreated) {
+            isTrackingEnabled = await this.isPositionTrackingEnabled(project_id, userId);
+        }
 
-        const csvData = await this.makeApiRequest(`/analytics/v1/`, params, userId, 'backlink_analysis', 'Backlinks', creditsUsed);
+        // Enable if not enabled (always for new projects, conditional for existing)
+        if (!isTrackingEnabled) {
+            const enablePayload = {
+                tracking_url: domain,  // e.g., "inimisttech.com"
+                tracking_url_type: "rootdomain",  // Or dynamic based on needs
+                location_id: 284,  // Australia national; fetch dynamically via type=locations
+                device: "desktop",
+                engine: "google",
+                weekly_notification: true  // Optional
+            };
+            await this.enablePositionTracking(project_id, userId, enablePayload);
 
-        const parsedData = this.transformBacklinksData(csvData);
-        // Attach page to each keyword JSON
-        const backlinksWithPage = parsedData.map(data => ({ ...data, page }))
+            // Optional: Add keywords if provided (for new/enabled campaigns)
+            if (keywords && keywords.length > 0) {
+                const addPayload = { phrases: keywords.join(',') };  // Comma-separated
+                await this.makeApiRequest(
+                    `/management/v1/projects/${project_id}/tracking/keywords`,
+                    {},
+                    userId,
+                    'position_keywords',
+                    'Add Keywords',
+                    50,
+                    'PUT',
+                    addPayload
+                );
+            }
+        } 
 
-        // Store in cache
-        await backlinkCacheService.set('backlink_cache', {
-            user_id: userId,
-            domain,
-            data_type: 'backlinks',
-            database_region: 'global',
-            data: [...(cachedData?.data || []), ...backlinksWithPage]
-        }, 12);
+        // Step 2: Fetch position data
+        const params: Record<string, string> = {
+            action: 'report',
+            type: 'tracking_position_organic',
+            date_begin: '20251029',  // Dynamic: Use current date - 30 days
+            date_end: '20251107',    // Today's date (Nov 7, 2025)
+            // display_limit: limit.toString(),
+            display_limit: '1',
+            display_offset: offset.toString(),
+            url: domain + '%2F*'  // Add mask if needed; omit for campaign default
+        };
 
-        return parsedData;
+        const creditsUsed = (limit / 10) * 100;  // ~100/keyword; adjust based on limit
 
+        const apiResponse = await this.makeApiRequest(
+            `/reports/v1/projects/${project_id}/tracking`,
+            params,
+            userId,
+            'position_tracking',
+            'Position Organic',
+            creditsUsed
+        );
+
+        // Parse response (assume CSV/JSON; adapt to your format)
+        const positions: PositionTracking[] = this.parsePositionData(apiResponse);  // Custom parser
+
+        // Cache result (stub)
+        // await positionCacheService.set('position_cache', domain, 'organic', 'global', { data: positions, page });
+
+        return positions;
     }
 
     // Transform domain overview response (CSV format)
