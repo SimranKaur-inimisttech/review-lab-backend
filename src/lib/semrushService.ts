@@ -316,13 +316,12 @@ export class SEMrushService {
             } else {
                 response = await axios.get(url.toString());
             }
-
             // Success logging
             await this.logUsage(
                 userId, apiEndpoint, requestType, 'success', creditsRequired,
                 params.domain || params.target, params.phrase
             );
-            // return ''
+
             return response.data;
             if (requestType == 'Backlinks_overview') {
                 return `ascore;total;domains_num;urls_num;follows_num;nofollows_num
@@ -765,25 +764,12 @@ export class SEMrushService {
 
 
     // Get project id for domain
-    async getProject(domain: string, userId: string): Promise<string> {
+    async getProject(domain: string, userId: string): Promise<any> {
         const projects = await this.makeApiRequest(`/management/v1/projects`, {}, userId, 'website_audit', 'projects', 1);
 
         const project = projects.find((p: any) => p.url === domain);
-        return project.project_id;
-    }
-
-    // Create project for domain
-    async createProject(domain: string, userId: string): Promise<string> {
-
-        const projectName = extractProjectName(domain);
-
-        const project = await this.makeApiRequest(`/management/v1/projects`, {}, userId, 'website_audit', 'projects', 1, 'POST', {
-            ...(projectName ? { project_name: projectName } : {}),
-            url: domain
-        });
-        console.log("Created project ===>", project);
-
-        return project.project_id;
+        console.log("Found project ===>", project);
+        return project;
     }
 
     private getGrade(score: number): string {
@@ -879,7 +865,7 @@ export class SEMrushService {
         // });
         // console.log("mapping ===>", mapping);
 
-        const project_id = await this.getProject(domain, userId);
+        const { project_id } = await this.getProject(domain, userId);
 
         const siteAuditData = await this.makeApiRequest(`/reports/v1/projects/${project_id}/siteaudit/info`, params, userId, 'website_audit', 'siteaudit', 1);
         const qualityScore = siteAuditData.current_snapshot.quality?.value ?? 0;
@@ -1016,7 +1002,7 @@ export class SEMrushService {
     }
 
     // Check if tracking is enabled (only for existing projects)
-    private async isPositionTrackingEnabled(project_id: string, userId: string): Promise<boolean> {
+    private async isPositionTrackingEnabled(project_id: string, userId: string, targetUrl?: string): Promise<any> {
         const campaignsResponse = await this.makeApiRequest(
             `/management/v1/projects/${project_id}/tracking/campaigns`,
             {},
@@ -1025,14 +1011,30 @@ export class SEMrushService {
             'Check Campaigns',
             1
         );
-
+        console.log("campaignsResponse ===>", campaignsResponse);
         const campaigns = campaignsResponse.campaigns || [];
         if (campaigns.length === 0) {
             return false;
         }
 
-        const mainCampaign = campaigns[0];  // Primary campaign
-        return mainCampaign.keywords_count > 0 && !mainCampaign.isGathering;
+        let targetCampaign = campaigns[0];
+
+        // If targetUrl provided, find matching campaign
+        if (targetUrl) {
+            targetCampaign = campaigns.find((campaign: any) => campaign.url === targetUrl
+            ) || campaigns[0];  // Fallback to primary if no match
+        }
+
+        const mainCampaign = targetCampaign;
+        if (mainCampaign.isGathering) {
+            throw new SEMrushError(`Campaign ${mainCampaign.id} is harvesting—data ready in 1-24h. Retry later.`);
+
+        }
+
+        if (mainCampaign.keywords_count === 0) {
+            throw new SEMrushError(`Campaign ${mainCampaign.id} has enabled for tracking but has 0 keywords—add some for results.`);
+        }
+        return mainCampaign.keywords_count > 0 && !mainCampaign.isGathering ? mainCampaign.id : false;
     }
 
     // Enable Position tracking for project
@@ -1056,7 +1058,6 @@ export class SEMrushService {
         userId: string,
         limit: number = 20,
         offset: number = 0,
-        keywords?: string[]  // Optional: keywords to add if campaign empty
     ): Promise<PositionTracking[]> {  // Assume interface: { keyword: string, position: number, traffic: number, ... }
         const page = Math.floor(offset / limit) + 1;
 
@@ -1064,22 +1065,26 @@ export class SEMrushService {
         // const cachedData = await positionCacheService.get('position_cache', domain, 'organic', 'global');
         // if (cachedData && cachedData.page === page) return cachedData.data;
 
-        let project_id: string = await this.getProject(domain, userId);
+        let { project_id, tools } = await this.getProject(domain, userId);
+
+        let trackingEnabled = tools.some((t: any) => t.tool === 'tracking');
         let wasProjectCreated = false;
 
         if (!project_id) {
             project_id = await this.createProject(domain, userId);
-            wasProjectCreated = true;  // Set flag if your createProject indicates new
+            wasProjectCreated = true;
         }
-
-        // Step 1: Check if tracking is enabled (skip for newly created, as it's obviously not)
-        let isTrackingEnabled = false;
-        if (!wasProjectCreated) {
-            isTrackingEnabled = await this.isPositionTrackingEnabled(project_id, userId);
+        // Check if tracking is enabled (skip for newly created, as it's obviously not)
+        let targetCampaignId = false;
+        if (!wasProjectCreated && trackingEnabled) {
+            console.log("Checking if position tracking is enabled...",trackingEnabled);
+            targetCampaignId = await this.isPositionTrackingEnabled(project_id, userId, domain);
+            console.log("targetCampaignId ===>", targetCampaignId);
         }
 
         // Enable if not enabled (always for new projects, conditional for existing)
-        if (!isTrackingEnabled) {
+        if (!targetCampaignId && !trackingEnabled) {
+            console.log("Enabling position tracking for project...");
             const enablePayload = {
                 tracking_url: domain,  // e.g., "inimisttech.com"
                 tracking_url_type: "rootdomain",  // Or dynamic based on needs
@@ -1089,24 +1094,9 @@ export class SEMrushService {
                 weekly_notification: true  // Optional
             };
             await this.enablePositionTracking(project_id, userId, enablePayload);
+        }
 
-            // Optional: Add keywords if provided (for new/enabled campaigns)
-            if (keywords && keywords.length > 0) {
-                const addPayload = { phrases: keywords.join(',') };  // Comma-separated
-                await this.makeApiRequest(
-                    `/management/v1/projects/${project_id}/tracking/keywords`,
-                    {},
-                    userId,
-                    'position_keywords',
-                    'Add Keywords',
-                    50,
-                    'PUT',
-                    addPayload
-                );
-            }
-        } 
-
-        // Step 2: Fetch position data
+        // Fetch position data
         const params: Record<string, string> = {
             action: 'report',
             type: 'tracking_position_organic',
@@ -1118,17 +1108,17 @@ export class SEMrushService {
             url: domain + '%2F*'  // Add mask if needed; omit for campaign default
         };
 
-        const creditsUsed = (limit / 10) * 100;  // ~100/keyword; adjust based on limit
+        const creditsUsed = (limit / 10) * 100;
 
         const apiResponse = await this.makeApiRequest(
-            `/reports/v1/projects/${project_id}/tracking`,
+            `/reports/v1/projects/${targetCampaignId}/tracking`,
             params,
             userId,
             'position_tracking',
             'Position Organic',
             creditsUsed
         );
-
+        return apiResponse;
         // Parse response (assume CSV/JSON; adapt to your format)
         const positions: PositionTracking[] = this.parsePositionData(apiResponse);  // Custom parser
 

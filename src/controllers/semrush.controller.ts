@@ -11,6 +11,11 @@ interface KeywordQuery extends ParsedQs {
     limit?: string;
     offset?: string;
 }
+interface TrackingQuery extends ParsedQs {
+    domain: string;
+    limit?: string;
+    offset?: string;
+}
 interface BacklinkQuery extends ParsedQs {
     limit?: string;
     offset?: string;
@@ -163,8 +168,8 @@ export const getBacklinkGapAnalysis = asyncHandler(async (req: Request, res: Res
     const { targetDomain, competitors = [], limit = "20", offset = "0" } = req.query as BacklinkGapQuery;
 
     const competitorList = Array.isArray(competitors)
-    ? competitors
-    : competitors.split(",").map(c => c.trim());
+        ? competitors
+        : competitors.split(",").map(c => c.trim());
 
     if (!targetDomain || !competitors?.length) {
         throw new ApiError(400, `Domain and competitors domain is required`);
@@ -175,7 +180,6 @@ export const getBacklinkGapAnalysis = asyncHandler(async (req: Request, res: Res
     const numericOffset = parseInt(offset, 10) || 0;
 
     const data = await semrushService.getBacklinkGap(targetDomain, competitorList, userId, numericLimit, numericOffset);
-    console.log("datata",data);
 
     const totalAvailable = numericOffset + data.length + (data.length === numericLimit ? numericLimit : 0);
 
@@ -191,4 +195,34 @@ export const getBacklinkGapAnalysis = asyncHandler(async (req: Request, res: Res
         hasMore: data.length === numericLimit,
         prospects: data
     }, "Prospect data fetched successfully"));
+});
+
+export const getPositionTrackingAnalysis = asyncHandler(async (req: Request, res: Response) => {
+    const { domain, limit = "20", offset = "0" } = req.query as TrackingQuery;
+
+    if (!domain) {
+        throw new ApiError(400, `Domain parameter is required`);
+    }
+
+    const userId = req.user!.id;
+    const numericLimit = Math.min(parseInt(limit, 10) || 20, 100);
+    const numericOffset = parseInt(offset, 10) || 0;
+
+    const data = await semrushService.getPositionTracking(domain, userId, numericLimit,
+        numericOffset);
+
+    const totalAvailable = numericOffset + data.length + (data.length === numericLimit ? numericLimit : 0);
+
+    res.status(200).json(new ApiResponse(200, {
+        domain: domain.trim(),
+        totalResults: data.length,
+        totalAvailable,
+        currentPage: {
+            offset: numericOffset,
+            limit: numericLimit,
+            count: data.length
+        },
+        hasMore: data.length === numericLimit,
+        backlinks: data
+    }, "Position tracking data fetched successfully"));
 });
