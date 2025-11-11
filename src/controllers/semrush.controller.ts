@@ -226,3 +226,12 @@ export const getPositionTrackingAnalysis = asyncHandler(async (req: Request, res
         backlinks: data
     }, "Position tracking data fetched successfully"));
 });
+
+export const getLocations = asyncHandler(async (req: Request, res: Response) => {
+
+    const userId = req.user!.id;
+
+    const data = await semrushService.getLocationsData(userId);
+
+    res.status(200).json(new ApiResponse(200, data, "Locations data fetched successfully"));
+});

@@ -1128,6 +1128,24 @@ export class SEMrushService {
         return positions;
     }
 
+    // Get position tracking data
+    async getLocationsData(
+        userId: string,
+    ): Promise<any> {
+        const { locations } = await semrushService.makeApiRequest(
+            '/position-tracking/management/v1/info/locations',
+            {},
+            userId,
+            'locations_pt',
+            'Get PT Locations',
+            1
+        );
+        const locationsData = locations.map((loc: any) => {
+            return { id: loc.location.id.toString(), name: loc.location.name, country: loc.location.country_code };
+        });
+        return locationsData;
+    }
+
     // Transform domain overview response (CSV format)
     private transformDomainOverview(csvData: string): DomainOverview {
         const lines = csvData.trim().split('\n');
