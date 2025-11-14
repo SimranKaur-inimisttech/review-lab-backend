@@ -13,6 +13,7 @@ interface KeywordQuery extends ParsedQs {
 }
 interface TrackingQuery extends ParsedQs {
     domain: string;
+    locationId?: string;
     limit?: string;
     offset?: string;
 }
@@ -198,7 +199,7 @@ export const getBacklinkGapAnalysis = asyncHandler(async (req: Request, res: Res
 });
 
 export const getPositionTrackingAnalysis = asyncHandler(async (req: Request, res: Response) => {
-    const { domain, limit = "20", offset = "0" } = req.query as TrackingQuery;
+    const { domain, locationId, limit = "20", offset = "0" } = req.query as TrackingQuery;
 
     if (!domain) {
         throw new ApiError(400, `Domain parameter is required`);
@@ -207,9 +208,9 @@ export const getPositionTrackingAnalysis = asyncHandler(async (req: Request, res
     const userId = req.user!.id;
     const numericLimit = Math.min(parseInt(limit, 10) || 20, 100);
     const numericOffset = parseInt(offset, 10) || 0;
+    const locationIdNum = locationId ? parseInt(locationId, 10) : 2036; 
 
-    const data = await semrushService.getPositionTracking(domain, userId, numericLimit,
-        numericOffset);
+    const data = await semrushService.getPositionTracking(domain, locationIdNum, userId, numericLimit, numericOffset);
 
     const totalAvailable = numericOffset + data.length + (data.length === numericLimit ? numericLimit : 0);
 
@@ -223,7 +224,7 @@ export const getPositionTrackingAnalysis = asyncHandler(async (req: Request, res
             count: data.length
         },
         hasMore: data.length === numericLimit,
-        backlinks: data
+        trackedKeywords: data
     }, "Position tracking data fetched successfully"));
 });
 

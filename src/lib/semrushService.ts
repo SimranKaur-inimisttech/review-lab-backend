@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/config/supabaseAdmin';
 import { keywordCacheService } from './keywordCacheService';
 import axios, { AxiosResponse } from 'axios';
-import { capitalizeFirst, extractProjectName, formatDate } from '@/utils/helpers';
+import { capitalizeFirst, extractProjectName, formatDate, parseDomain } from '@/utils/helpers';
 import { backlinkCacheService } from './backlinkCacheService';
 import * as cheerio from 'cheerio';
 
@@ -354,6 +354,7 @@ export class SEMrushService {
             // 6;addirectory.org;1158;107.161.23.26;us;1735747664;1761607897`
             // }
         } catch (error: any) {
+            console.log('SEMrush API request error:', error);
             if (axios.isAxiosError(error) && error.response) {
                 const status = error.response.status;
 
@@ -769,7 +770,7 @@ export class SEMrushService {
 
         const project = projects.find((p: any) => p.url === domain);
         console.log("Found project ===>", project);
-        return project;
+        return project || {};
     }
 
     private getGrade(score: number): string {
@@ -1055,6 +1056,7 @@ export class SEMrushService {
     // Get position tracking data
     async getPositionTracking(
         domain: string,
+        locationId: number,
         userId: string,
         limit: number = 20,
         offset: number = 0,
@@ -1064,34 +1066,39 @@ export class SEMrushService {
         // Check cache first (stub—adapt to your cache service)
         // const cachedData = await positionCacheService.get('position_cache', domain, 'organic', 'global');
         // if (cachedData && cachedData.page === page) return cachedData.data;
+        const { parsedDomain, urlType } = parseDomain(domain);
 
-        let { project_id, tools } = await this.getProject(domain, userId);
+        let { project_id, tools } = await this.getProject(parsedDomain, userId);
+        console.log("Project ID for domain:", project_id);
 
-        let trackingEnabled = tools.some((t: any) => t.tool === 'tracking');
+        let trackingEnabled = false;
         let wasProjectCreated = false;
 
+
         if (!project_id) {
-            project_id = await this.createProject(domain, userId);
+            project_id = await this.createProject(parsedDomain, userId);
             wasProjectCreated = true;
+        } else {
+            trackingEnabled = tools.some((t: any) => t.tool === 'tracking');
         }
+
         // Check if tracking is enabled (skip for newly created, as it's obviously not)
         let targetCampaignId = false;
         if (!wasProjectCreated && trackingEnabled) {
-            console.log("Checking if position tracking is enabled...",trackingEnabled);
+            console.log("Checking if position tracking is enabled...", trackingEnabled);
             targetCampaignId = await this.isPositionTrackingEnabled(project_id, userId, domain);
             console.log("targetCampaignId ===>", targetCampaignId);
         }
-
         // Enable if not enabled (always for new projects, conditional for existing)
         if (!targetCampaignId && !trackingEnabled) {
-            console.log("Enabling position tracking for project...");
+            console.log("Enabling position tracking for project...", domain, type, locationId);
             const enablePayload = {
-                tracking_url: domain,  // e.g., "inimisttech.com"
-                tracking_url_type: "rootdomain",  // Or dynamic based on needs
-                location_id: 284,  // Australia national; fetch dynamically via type=locations
+                tracking_url: domain,
+                tracking_url_type: urlType,
+                location_id: locationId,
                 device: "desktop",
                 engine: "google",
-                weekly_notification: true  // Optional
+                weekly_notification: true
             };
             await this.enablePositionTracking(project_id, userId, enablePayload);
         }
@@ -1105,8 +1112,12 @@ export class SEMrushService {
             // display_limit: limit.toString(),
             display_limit: '1',
             display_offset: offset.toString(),
-            url: domain + '%2F*'  // Add mask if needed; omit for campaign default
         };
+
+        // Add mask only if type is not "url" (exact/single page)        
+        if (urlType !== 'url') {
+            params.url = domain + '%2F*';  // Wildcard for paths
+        }
 
         const creditsUsed = (limit / 10) * 100;
 

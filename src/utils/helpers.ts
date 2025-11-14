@@ -81,3 +81,44 @@ export function extractProjectName(domain: string): string {
   return cleanName || '';
 
 }
+
+export function parseDomain(input: string) {
+  let domain = input.trim();
+
+  // Detect if user entered a full URL
+  const isFullURL = /^https?:\/\//i.test(domain);
+
+  // Extract hostname if it's a URL (this keeps www)
+  try {
+    if (isFullURL) domain = new URL(domain).hostname;
+  } catch { }
+
+  domain = domain.toLowerCase();
+
+  // Universal TLD regex (supports multi-level TLDs)
+  const tldMatch = domain.match(/([a-z0-9-]+\.[a-z]{2,}|[a-z]{2,})$/i);
+  const tld = tldMatch ? tldMatch[1] : null;
+
+  if (!tld) {
+    return {
+      parsedDomain: domain,
+      type: "invalid"
+    };
+  }
+
+  const parts = domain.split(".");
+  const tldParts = tld.split(".");
+
+  // Determine type based on ORIGINAL input type rules
+  const type = isFullURL
+    ? "url"
+    : parts.length === tldParts.length + 1
+      ? "rootdomain"
+      : "subdomain";
+
+  return {
+    parsedDomain: domain,
+    urlType: type
+  };
+}
+
