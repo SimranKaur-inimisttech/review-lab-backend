@@ -110,7 +110,35 @@ export interface KeywordTableData {
     competition_level: 'low' | 'medium' | 'high';
     database?: string;
 }
-
+export interface PositionTracking {
+    trackedDomain: TrackedDomain;
+    trackedKeywords: TrackedKeyword[];
+}
+export interface TrackedDomain {
+    domain: string;
+    keywords: number;
+    movedUp: number;
+    movedDown: number;
+    searchEngine: string;
+    countryLanguage: string;
+    device: string;
+}
+export interface TrackedKeyword {
+    id: string;
+    keyword: string;
+    pageRanking: string;
+    device: 'desktop' | 'mobile';
+    position: number | 'lost';
+    previousPosition?: number;
+    estimatedTraffic: number;
+    searchVolume: number;
+    movement: number;
+    trendData: number[];
+    volume?: number;
+    cpc?: number;
+    difficulty?: number;
+    intent?: "commercial" | "informational" | "transactional" | "navigational";
+}
 export class SEMrushError extends Error {
     constructor(
         message: string,
@@ -1026,21 +1054,20 @@ export class SEMrushService {
             ) || campaigns[0];  // Fallback to primary if no match
         }
 
-        const mainCampaign = targetCampaign;
-        if (mainCampaign.isGathering) {
-            throw new SEMrushError(`Campaign ${mainCampaign.id} is harvesting—data ready in 1-24h. Retry later.`);
+        if (targetCampaign.isGathering) {
+            throw new SEMrushError(`Campaign ${targetCampaign.id} is harvesting—data ready in 1-24h. Retry later.`);
 
         }
 
-        if (mainCampaign.keywords_count === 0) {
-            throw new SEMrushError(`Campaign ${mainCampaign.id} has enabled for tracking but has 0 keywords—add some for results.`);
+        if (targetCampaign.keywords_count === 0) {
+            throw new SEMrushError(`Campaign ${targetCampaign.id} has enabled for tracking but has 0 keywords—add some for results.`);
         }
-        return mainCampaign.keywords_count > 0 && !mainCampaign.isGathering ? mainCampaign.id : false;
+        return targetCampaign.keywords_count > 0 && !targetCampaign.isGathering ? targetCampaign : false;
     }
 
     // Enable Position tracking for project
     private async enablePositionTracking(project_id: string, userId: string, enablePayload: Record<string, any>): Promise<boolean> {
-        await this.makeApiRequest(
+        const response = await this.makeApiRequest(
             `/management/v1/projects/${project_id}/tracking/enable`,
             {},
             userId,
@@ -1050,7 +1077,7 @@ export class SEMrushService {
             'POST',
             enablePayload
         );
-        return true;
+        return response.result.campaign_id;
     }
 
     // Get position tracking data
@@ -1060,12 +1087,58 @@ export class SEMrushService {
         userId: string,
         limit: number = 20,
         offset: number = 0,
-    ): Promise<PositionTracking[]> {  // Assume interface: { keyword: string, position: number, traffic: number, ... }
+    ): Promise<PositionTracking> {  // Assume interface: { keyword: string, position: number, traffic: number, ... }
         const page = Math.floor(offset / limit) + 1;
 
         // Check cache first (stub—adapt to your cache service)
         // const cachedData = await positionCacheService.get('position_cache', domain, 'organic', 'global');
         // if (cachedData && cachedData.page === page) return cachedData.data;
+        return {
+            trackedDomain: {
+                domain: domain,
+                keywords: 40,
+                movedUp: 5,
+                movedDown: 3,
+                searchEngine: 'google',
+                countryLanguage: 'English - United States',
+                device: 'desktop'
+            },
+            trackedKeywords: [{
+                id: '801444466689038445',
+                keyword: 'facebook',
+                pageRanking: 'https://apps.apple.com/us/app/facebook/id284882215',
+                device: 'desktop',
+                position: 3,
+                previousPosition: 4,
+                estimatedTraffic: 12345,
+                searchVolume: 185000000,
+                movement: 3,
+                trendData: [4, 5, 3, 2, 4, 3, 2, 3, 4, 3]
+            },
+            {
+                id: '801444466689038446',
+                keyword: 'instagram',
+                pageRanking: 'https://apps.apple.com/us/app/instagram/id389801252',
+                device: 'desktop',
+                position: 5,
+                previousPosition: 7,
+                estimatedTraffic: 9876,
+                searchVolume: 150000000,
+                movement: 2,
+                trendData: [6, 5, 7, 8, 6, 5, 4, 5, 6, 5]
+            }, {
+                id: '801444466689038447',
+                keyword: 'twitter',
+                pageRanking: 'https://apps.apple.com/us/app/twitter/id333903271',
+                device: 'desktop',
+                position: 8,
+                previousPosition: 10,
+                estimatedTraffic: 5432,
+                searchVolume: 120000000,
+                movement: 2,
+                trendData: [9, 8, 10, 11, 9, 8, 7, 8, 9, 8]
+            }],
+        }
         const { parsedDomain, urlType } = parseDomain(domain);
 
         let { project_id, tools } = await this.getProject(parsedDomain, userId);
@@ -1083,15 +1156,12 @@ export class SEMrushService {
         }
 
         // Check if tracking is enabled (skip for newly created, as it's obviously not)
-        let targetCampaignId = false;
+        let targetCampaign = null;
         if (!wasProjectCreated && trackingEnabled) {
-            console.log("Checking if position tracking is enabled...", trackingEnabled);
-            targetCampaignId = await this.isPositionTrackingEnabled(project_id, userId, domain);
-            console.log("targetCampaignId ===>", targetCampaignId);
+            targetCampaign = await this.isPositionTrackingEnabled(project_id, userId, domain);
         }
         // Enable if not enabled (always for new projects, conditional for existing)
-        if (!targetCampaignId && !trackingEnabled) {
-            console.log("Enabling position tracking for project...", domain, type, locationId);
+        if (!targetCampaign && !trackingEnabled) {
             const enablePayload = {
                 tracking_url: domain,
                 tracking_url_type: urlType,
@@ -1100,7 +1170,7 @@ export class SEMrushService {
                 engine: "google",
                 weekly_notification: true
             };
-            await this.enablePositionTracking(project_id, userId, enablePayload);
+            targetCampaign = await this.enablePositionTracking(project_id, userId, enablePayload);
         }
 
         // Fetch position data
@@ -1121,21 +1191,196 @@ export class SEMrushService {
 
         const creditsUsed = (limit / 10) * 100;
 
-        const apiResponse = await this.makeApiRequest(
-            `/reports/v1/projects/${targetCampaignId}/tracking`,
-            params,
-            userId,
-            'position_tracking',
-            'Position Organic',
-            creditsUsed
-        );
-        return apiResponse;
-        // Parse response (assume CSV/JSON; adapt to your format)
-        const positions: PositionTracking[] = this.parsePositionData(apiResponse);  // Custom parser
+        // const { data } = await this.makeApiRequest(
+        //     `/reports/v1/projects/${targetCampaign.id}/tracking`,
+        //     params,
+        //     userId,
+        //     'position_tracking',
+        //     'Position Organic',
+        //     creditsUsed
+        // );
+        const data = {
+            "total": 2,
+            "state": "0",
+            "limit": 10,
+            "offset": 0,
+            "data": {
+                "0": {
+                    "Pi": "801444466689038445",
+                    "Ph": "facebook",
+                    "Kb": 20170908,
+                    "Tg": {
+                        "0": "tag1"
+                    },
+                    "In": {
+                        "0": "i",
+                        "1": "c"
+                    },
+                    "Cp": "1.44",
+                    "Nq": "185000000",
+                    "Gs": "0",
+                    "Dt": {
+                        "20210521": {
+                            "*.apple.com/*": 4,
+                        },
+                        "20210527": {
+                            "*.apple.com/*": 3,
+                        }
+                    },
+                    "Be": {
+                        "*.apple.com/*": 4,
+                    },
+                    "Fi": {
+                        "*.apple.com/*": 3,
+                    },
+                    "Diff": {
+                        "*.apple.com/*": 1,
+                    },
+                    "Diff1": {
+                        "*.apple.com/*": 0,
+                    },
+                    "Diff7": {
+                        "*.apple.com/*": 97,
+                    },
+                    "Diff30": {
+                        "*.apple.com/*": 97,
+                    },
+                    "Vi": {
+                        "20210521": {
+                            "*.apple.com/*": 10.8516,
+                        },
+                        "20210527": {
+                            "*.apple.com/*": 13.0494,
+                        },
+                        "Diff": {
+                            "*.apple.com/*": 2.1978,
+                        }
+                    },
+                    "Sov": {
+                        "20210521": {
+                            "*.apple.com/*": 0.02,
+                        },
+                        "20210527": {
+                            "*.apple.com/*": 0.03,
+                        },
+                        "Diff": {
+                            "*.apple.com/*": 0.01,
+                        }
+                    },
+                    "Sf": {
+                        "20210521": [
+                            "new",
+                            "twt",
+                            "rev",
+                            "stl",
+                            "kng"
+                        ],
+                        "20210527": [
+                            "new",
+                            "twt",
+                            "rev",
+                            "stl",
+                            "kng"
+                        ]
+                    },
+                    "Tr": {
+                        "20210521": {
+                            "*.apple.com/*": 487166.66,
+                        },
+                        "20210527": {
+                            "*.apple.com/*": 585833.33,
+                        }
+                    },
+                    "Tc": {
+                        "20210521": {
+                            "*.apple.com/*": 701520,
+                        },
+                        "20210527": {
+                            "*.apple.com/*": 843600,
+                        }
+                    },
+                    "Lu": {
+                        "20210521": {
+                            "*.apple.com/*": "https://apps.apple.com/us/app/facebook/id284882215",
+                        },
+                        "20210527": {
+                            "*.apple.com/*": "https://apps.apple.com/us/app/facebook/id284882215",
+                        }
+                    },
+                    "Lt": {
+                        "20210521": {
+                            "*.apple.com/*": ["rev"],
+                        },
+                        "20210527": {
+                            "*.apple.com/*": ["rev"],
+                        }
+                    }
+                },
+            }
+        }
+        let movedUp = 0;
+        let movedDown = 0;
 
-        // Cache result (stub)
-        // await positionCacheService.set('position_cache', domain, 'organic', 'global', { data: positions, page });
+        Object.values(data).forEach((p: any) => {
+            const diff = parseInt(Object.values(p.diff)[0] as any) || 0;
 
+            if (diff > 0) movedUp++;
+            if (diff < 0) movedDown++;
+        });
+        const trackedKeywords = this.parseTrackedKeywords(data, targetCampaign);
+
+        const trackedDomain: TrackedDomain = {
+            domain: targetCampaign.url,
+            keywords: targetCampaign.keywords_count,
+            movedUp,
+            movedDown,
+            searchEngine: targetCampaign.engine || 'google',
+            countryLanguage: targetCampaign.language || 'Unknown',
+            device: targetCampaign.device || 'desktop'
+        }
+
+        return { trackedDomain, trackedKeywords };
+    }
+
+    private parseTrackedKeywords(data: any, targetCampaign: any): TrackedKeyword[] {
+        const positions: TrackedKeyword[] = [];
+        Object.values(data).map((p: any, i: number) => {
+            const url = Object.keys(p.Be)[0];
+            const position = parseInt(p.Fi[url]) || 0;
+            const previousPosition = parseInt(p.Be[url]) || 0;
+            const volume = parseInt(p.Nq) || 0;
+            const movement = position - previousPosition;
+
+            // Page ranking (landing URL from Lu[last date][mask])
+            const latestLuDate = Object.keys(p.Lu || {})[Object.keys(p.Lu || {}).length - 1] || '';
+            const pageRanking = p.Lu?.[latestLuDate]?.[url] || '';
+
+            // Estimated traffic (latest Tr[mask])
+            const latestDate = Object.keys(p.Tr || {})[Object.keys(p.Tr || {}).length - 1] || '';
+            const estimatedTraffic = parseFloat(p.Tr?.[latestDate]?.[url] || 0);
+
+            // Trend data (positions over dates for line chart)
+            const trendData: number[] = [];
+            Object.keys(p.Dt || {}).forEach((date: string) => {
+                const datePos = parseInt(p.Dt[date]?.[url] || 0);
+                trendData.push(datePos);
+            });
+            // Pad to 7 days if short (or use actual dates) 
+            while (trendData.length < 7) trendData.push(trendData[trendData.length - 1] || 0);
+
+            return {
+                id: p.Pi,
+                keyword: p.Ph,
+                pageRanking,
+                device: targetCampaign.device || 'desktop',
+                position,
+                previousPosition,
+                estimatedTraffic: Math.floor(estimatedTraffic),
+                searchVolume: volume,
+                movement,
+                trendData
+            }
+        });
         return positions;
     }
 

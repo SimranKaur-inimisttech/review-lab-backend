@@ -208,23 +208,22 @@ export const getPositionTrackingAnalysis = asyncHandler(async (req: Request, res
     const userId = req.user!.id;
     const numericLimit = Math.min(parseInt(limit, 10) || 20, 100);
     const numericOffset = parseInt(offset, 10) || 0;
-    const locationIdNum = locationId ? parseInt(locationId, 10) : 2036; 
+    const locationIdNum = locationId ? parseInt(locationId, 10) : 2036;
 
-    const data = await semrushService.getPositionTracking(domain, locationIdNum, userId, numericLimit, numericOffset);
-
-    const totalAvailable = numericOffset + data.length + (data.length === numericLimit ? numericLimit : 0);
+    const { trackedDomain, trackedKeywords } = await semrushService.getPositionTracking(domain, locationIdNum, userId, numericLimit, numericOffset);
 
     res.status(200).json(new ApiResponse(200, {
         domain: domain.trim(),
-        totalResults: data.length,
-        totalAvailable,
+        trackedDomain,
+        totalResults: trackedKeywords.length,
+        totalAvailable: trackedDomain.keywords,
         currentPage: {
             offset: numericOffset,
             limit: numericLimit,
-            count: data.length
+            count: trackedKeywords.length
         },
-        hasMore: data.length === numericLimit,
-        trackedKeywords: data
+        hasMore: trackedKeywords.length === numericLimit,
+        trackedKeywords
     }, "Position tracking data fetched successfully"));
 });
 
